@@ -222,6 +222,7 @@ export default function CollectionApp() {
   const [search, setSearch] = useState("");
   const [cabangFilter, setCabangFilter] = useState("");
   const [recoFilter, setRecoFilter] = useState("");
+  const [matriksFilter, setMatriksFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [view, setView] = useState("list"); // 'list' | 'dashboard'
@@ -258,6 +259,11 @@ export default function CollectionApp() {
     return records.filter((r) => {
       if (cabangFilter && r.cabang !== cabangFilter) return false;
       if (recoFilter && r.recoveryHead !== recoFilter) return false;
+      if (
+        matriksFilter &&
+        String(r.matriks || "").toUpperCase().trim() !== matriksFilter
+      )
+        return false;
       if (statusFilter && getStatus(r._id) !== statusFilter) return false;
       if (!q) return true;
       return [
@@ -272,7 +278,15 @@ export default function CollectionApp() {
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [records, search, cabangFilter, recoFilter, statusFilter, activity]);
+  }, [
+    records,
+    search,
+    cabangFilter,
+    recoFilter,
+    matriksFilter,
+    statusFilter,
+    activity,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRecords = filtered.slice(
@@ -285,7 +299,10 @@ export default function CollectionApp() {
     [records]
   );
 
-  useEffect(() => setPage(1), [search, cabangFilter, recoFilter, statusFilter]);
+  useEffect(
+    () => setPage(1),
+    [search, cabangFilter, recoFilter, matriksFilter, statusFilter]
+  );
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
@@ -476,7 +493,17 @@ export default function CollectionApp() {
           </button>
         </div>
       ) : view === "dashboard" ? (
-        <Dashboard records={records} activity={activity} />
+        <Dashboard
+          records={records}
+          activity={activity}
+          onFilter={(type, value) => {
+            if (type === "status") setStatusFilter(value);
+            if (type === "cabang") setCabangFilter(value);
+            if (type === "reco") setRecoFilter(value);
+            if (type === "matriks") setMatriksFilter(value);
+            setView("list");
+          }}
+        />
       ) : (
         <>
           {/* search + filters */}
@@ -542,6 +569,33 @@ export default function CollectionApp() {
                 {filtered.length.toLocaleString("id-ID")} hasil
               </span>
             </div>
+
+            {(matriksFilter ||
+              (cabangFilter && view === "list") ||
+              recoFilter ||
+              statusFilter) && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {matriksFilter && (
+                  <span className="flex items-center gap-1 text-[11px] font-semibold bg-[#12233D]/5 text-[#12233D] px-2 py-1 rounded-full">
+                    Matriks: {matriksFilter}
+                    <button onClick={() => setMatriksFilter("")}>
+                      <X size={11} />
+                    </button>
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setCabangFilter("");
+                    setRecoFilter("");
+                    setMatriksFilter("");
+                    setStatusFilter("");
+                  }}
+                  className="text-[11px] text-[#12233D]/40 underline"
+                >
+                  Reset semua filter
+                </button>
+              </div>
+            )}
           </div>
 
           {/* list */}
@@ -931,12 +985,24 @@ function Fact({ icon: Icon, label, value, mono, strong }) {
   );
 }
 
-function BarRow({ label, value, max, color, formatValue }) {
+function BarRow({ label, value, max, color, formatValue, onClick }) {
   const pct = max > 0 ? Math.max(4, (value / max) * 100) : 0;
   return (
-    <div className="mb-2.5 last:mb-0">
+    <button
+      type="button"
+      disabled={!onClick}
+      onClick={onClick}
+      className={`w-full text-left mb-2.5 last:mb-0 ${
+        onClick ? "active:opacity-60" : ""
+      }`}
+    >
       <div className="flex items-center justify-between text-xs mb-1">
-        <span className="text-[#12233D]/70 truncate pr-2">{label}</span>
+        <span className="text-[#12233D]/70 truncate pr-2 flex items-center gap-1">
+          {label}
+          {onClick && (
+            <ChevronRight size={11} className="text-[#12233D]/30 shrink-0" />
+          )}
+        </span>
         <span className="font-mono font-semibold shrink-0">
           {formatValue ? formatValue(value) : value.toLocaleString("id-ID")}
         </span>
@@ -947,22 +1013,94 @@ function BarRow({ label, value, max, color, formatValue }) {
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
-    </div>
+    </button>
   );
 }
 
-function DashboardCard({ title, children }) {
+function DashboardCard({ title, right, children }) {
   return (
     <div className="bg-white rounded-xl p-3.5 shadow-sm border border-[#12233D]/5">
-      <p className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold mb-3">
-        {title}
-      </p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+          {title}
+        </p>
+        {right}
+      </div>
       {children}
     </div>
   );
 }
 
-function Dashboard({ records, activity }) {
+function KpiCard({ label, value, sub, accent }) {
+  return (
+    <div className="bg-white rounded-xl p-3 shadow-sm border border-[#12233D]/5">
+      <p className="text-[10px] uppercase tracking-wide text-[#12233D]/40 font-semibold">
+        {label}
+      </p>
+      <p
+        className="text-lg font-mono font-bold tabular-nums mt-0.5 truncate"
+        style={accent ? { color: accent } : undefined}
+      >
+        {value}
+      </p>
+      {sub && <p className="text-[10px] text-[#12233D]/40 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function DonutChart({ data, total }) {
+  let acc = 0;
+  const stops = data
+    .filter((d) => d.value > 0)
+    .map((d) => {
+      const pct = total > 0 ? (d.value / total) * 100 : 0;
+      const start = acc;
+      acc += pct;
+      return `${d.color} ${start}% ${acc}%`;
+    });
+  const bg =
+    stops.length > 0
+      ? `conic-gradient(${stops.join(", ")})`
+      : "#EEF0F3";
+  return (
+    <div className="flex items-center gap-4">
+      <div
+        className="relative w-24 h-24 rounded-full shrink-0"
+        style={{ background: bg }}
+      >
+        <div className="absolute inset-[7px] bg-white rounded-full flex flex-col items-center justify-center">
+          <span className="text-base font-mono font-bold text-[#12233D]">
+            {total.toLocaleString("id-ID")}
+          </span>
+          <span className="text-[8px] uppercase tracking-wide text-[#12233D]/40">
+            Kontrak
+          </span>
+        </div>
+      </div>
+      <div className="flex-1 space-y-1.5">
+        {data.map((d) => {
+          const pct = total > 0 ? ((d.value / total) * 100).toFixed(0) : 0;
+          return (
+            <div key={d.label} className="flex items-center gap-1.5 text-xs">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: d.color }}
+              />
+              <span className="text-[#12233D]/70 truncate flex-1">
+                {d.label}
+              </span>
+              <span className="font-mono font-semibold text-[#12233D]">
+                {pct}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ records, activity, onFilter }) {
   const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
 
   const statusData = useMemo(() => {
@@ -973,6 +1111,7 @@ function Dashboard({ records, activity }) {
       counts[s] = (counts[s] || 0) + 1;
     });
     return STATUS_OPTIONS.map((s) => ({
+      key: s.key,
       label: s.label,
       value: counts[s.key],
       color: s.color,
@@ -1020,6 +1159,26 @@ function Dashboard({ records, activity }) {
       .slice(0, 10);
   }, [records]);
 
+  const lunasStats = useMemo(() => {
+    let count = 0;
+    let value = 0;
+    records.forEach((r) => {
+      if (getStatus(r._id) === "lunas") {
+        count++;
+        value += Number(r.balPrin) || 0;
+      }
+    });
+    return { count, value };
+  }, [records, activity]);
+
+  const totalOutstanding = useMemo(
+    () => records.reduce((sum, r) => sum + (Number(r.balPrin) || 0), 0),
+    [records]
+  );
+  const avgOutstanding = records.length
+    ? totalOutstanding / records.length
+    : 0;
+
   const maxStatus = Math.max(1, ...statusData.map((d) => d.value));
   const maxMatriks = Math.max(1, ...matriksData.map((d) => d.value));
   const maxCabang = Math.max(1, ...cabangOutstanding.map((d) => d.value));
@@ -1027,6 +1186,32 @@ function Dashboard({ records, activity }) {
 
   return (
     <div className="px-4 mt-4 space-y-3 pb-6">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 gap-2">
+        <KpiCard
+          label="Total Kontrak"
+          value={records.length.toLocaleString("id-ID")}
+        />
+        <KpiCard
+          label="Total Sisa Hutang"
+          value={formatRp(totalOutstanding)}
+        />
+        <KpiCard
+          label="Lunas / Selesai"
+          value={lunasStats.count.toLocaleString("id-ID")}
+          sub={formatRp(lunasStats.value)}
+          accent="#2F7A4F"
+        />
+        <KpiCard
+          label="Rata-rata / Kontrak"
+          value={formatRp(avgOutstanding)}
+        />
+      </div>
+
+      <DashboardCard title="Proporsi Status Collection">
+        <DonutChart data={statusData} total={records.length} />
+      </DashboardCard>
+
       <DashboardCard title="Status Collection">
         {statusData.map((d) => (
           <BarRow
@@ -1035,6 +1220,9 @@ function Dashboard({ records, activity }) {
             value={d.value}
             max={maxStatus}
             color={d.color}
+            onClick={
+              d.value > 0 ? () => onFilter("status", d.key) : undefined
+            }
           />
         ))}
       </DashboardCard>
@@ -1048,6 +1236,7 @@ function Dashboard({ records, activity }) {
               value={d.value}
               max={maxMatriks}
               color={d.color}
+              onClick={() => onFilter("matriks", d.label)}
             />
           ))}
         </DashboardCard>
@@ -1063,6 +1252,7 @@ function Dashboard({ records, activity }) {
               max={maxCabang}
               color="#C98A2C"
               formatValue={formatRp}
+              onClick={() => onFilter("cabang", d.label)}
             />
           ))}
         </DashboardCard>
@@ -1077,6 +1267,7 @@ function Dashboard({ records, activity }) {
               value={d.value}
               max={maxReco}
               color="#2A6FB0"
+              onClick={() => onFilter("reco", d.label)}
             />
           ))}
         </DashboardCard>
@@ -1084,4 +1275,3 @@ function Dashboard({ records, activity }) {
     </div>
   );
 }
-
