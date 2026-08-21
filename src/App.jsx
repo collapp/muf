@@ -20,6 +20,8 @@ import {
   Store,
   UserCog,
   ClipboardList,
+  LayoutDashboard,
+  List,
 } from "lucide-react";
 
 // ---------- field mapping ----------
@@ -53,6 +55,7 @@ const FIELD_CANDIDATES = {
   tanggalJT: ["TANGGALJT"],
   deliquency: ["DELIQUENCY"],
   statusDebitur: ["STATUSDEBITUR"],
+  matriks: ["NEWMATRIKS", "OLDMATRIKS"],
 };
 
 const FIELD_LABELS = {
@@ -83,6 +86,7 @@ const FIELD_LABELS = {
   tanggalJT: "Tanggal Jatuh Tempo",
   deliquency: "Deliquency",
   statusDebitur: "Status Debitur",
+  matriks: "Matriks Risiko",
 };
 
 const STATUS_OPTIONS = [
@@ -95,6 +99,20 @@ const STATUS_OPTIONS = [
 ];
 const statusInfo = (key) =>
   STATUS_OPTIONS.find((s) => s.key === key) || STATUS_OPTIONS[0];
+
+const MATRIKS_COLORS = {
+  LOW: "#2F7A4F",
+  "MEDIUM LOW": "#4C8FA8",
+  MEDIUM: "#C98A2C",
+  "MEDIUM HIGH": "#D9702E",
+  HIGH: "#B23A2E",
+};
+function matriksColor(val) {
+  const key = String(val || "")
+    .toUpperCase()
+    .trim();
+  return MATRIKS_COLORS[key] || "#8A8F98";
+}
 
 function formatRp(n) {
   const v = Number(n);
@@ -206,8 +224,10 @@ export default function CollectionApp() {
   const [recoFilter, setRecoFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [view, setView] = useState("list"); // 'list' | 'dashboard'
   const [selected, setSelected] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [warnaDraft, setWarnaDraft] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const fileInput = useRef(null);
 
@@ -292,6 +312,18 @@ export default function CollectionApp() {
     const next = {
       ...activity,
       [id]: { ...(activity[id] || { notes: [] }), status: statusKey },
+    };
+    setActivity(next);
+    await saveJSON("wo-activity", next);
+  }
+
+  async function saveWarna(id) {
+    const next = {
+      ...activity,
+      [id]: {
+        ...(activity[id] || { notes: [] }),
+        warnaKendaraan: warnaDraft.trim(),
+      },
     };
     setActivity(next);
     await saveJSON("wo-activity", next);
@@ -401,6 +433,31 @@ export default function CollectionApp() {
         </div>
       )}
 
+      {records.length > 0 && (
+        <div className="px-4 mt-4 flex gap-2">
+          <button
+            onClick={() => setView("list")}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold py-2 rounded-lg transition-colors ${
+              view === "list"
+                ? "bg-[#12233D] text-white"
+                : "bg-white text-[#12233D]/60 border border-[#12233D]/10"
+            }`}
+          >
+            <List size={15} /> Daftar
+          </button>
+          <button
+            onClick={() => setView("dashboard")}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold py-2 rounded-lg transition-colors ${
+              view === "dashboard"
+                ? "bg-[#12233D] text-white"
+                : "bg-white text-[#12233D]/60 border border-[#12233D]/10"
+            }`}
+          >
+            <LayoutDashboard size={15} /> Dashboard
+          </button>
+        </div>
+      )}
+
       {records.length === 0 ? (
         <div className="flex flex-col items-center justify-center text-center px-8 mt-20 gap-3">
           <div className="w-14 h-14 rounded-full bg-[#12233D]/5 flex items-center justify-center">
@@ -418,6 +475,8 @@ export default function CollectionApp() {
             <Upload size={16} /> Pilih File Excel
           </button>
         </div>
+      ) : view === "dashboard" ? (
+        <Dashboard records={records} activity={activity} />
       ) : (
         <>
           {/* search + filters */}
@@ -492,7 +551,10 @@ export default function CollectionApp() {
               return (
                 <button
                   key={r._id}
-                  onClick={() => setSelected(r)}
+                  onClick={() => {
+                    setSelected(r);
+                    setWarnaDraft(activity[r._id]?.warnaKendaraan || "");
+                  }}
                   className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-sm border border-[#12233D]/5 active:scale-[0.99] transition-transform"
                   style={{ borderLeft: `4px solid ${st.color}` }}
                 >
@@ -675,6 +737,41 @@ export default function CollectionApp() {
                     selected.tahun || "-"
                   })`}
                 />
+                {selected.matriks && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-[#12233D]/40">
+                      Matriks Risiko
+                    </p>
+                    <span
+                      className="inline-block text-xs font-semibold px-2 py-0.5 rounded mt-0.5"
+                      style={{
+                        color: matriksColor(selected.matriks),
+                        backgroundColor: matriksColor(selected.matriks) + "1A",
+                      }}
+                    >
+                      {selected.matriks}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[#12233D]/40">
+                    Warna Kendaraan (isi manual)
+                  </p>
+                  <div className="flex gap-1.5 mt-0.5">
+                    <input
+                      value={warnaDraft}
+                      onChange={(e) => setWarnaDraft(e.target.value)}
+                      placeholder="mis. Hitam"
+                      className="flex-1 text-sm bg-[#F4F5F7] border border-[#12233D]/10 rounded-md px-2 py-1 outline-none focus:border-[#C98A2C]"
+                    />
+                    <button
+                      onClick={() => saveWarna(selected._id)}
+                      className="text-[#12233D] bg-[#12233D]/10 rounded-md px-2"
+                    >
+                      <Check size={14} />
+                    </button>
+                  </div>
+                </div>
                 <Fact label="Tenor" value={`${selected.tenor || "-"} bln`} />
                 <Fact label="Nama BPKB" value={selected.namaBpkb} />
                 <Fact label="No Mesin" value={selected.noMesin} mono />
@@ -809,6 +906,10 @@ export default function CollectionApp() {
           </div>
         </div>
       )}
+
+      <p className="text-center text-[10px] text-[#12233D]/30 py-4">
+        © SRISP 2026
+      </p>
     </div>
   );
 }
@@ -829,3 +930,158 @@ function Fact({ icon: Icon, label, value, mono, strong }) {
     </div>
   );
 }
+
+function BarRow({ label, value, max, color, formatValue }) {
+  const pct = max > 0 ? Math.max(4, (value / max) * 100) : 0;
+  return (
+    <div className="mb-2.5 last:mb-0">
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-[#12233D]/70 truncate pr-2">{label}</span>
+        <span className="font-mono font-semibold shrink-0">
+          {formatValue ? formatValue(value) : value.toLocaleString("id-ID")}
+        </span>
+      </div>
+      <div className="h-2 bg-[#12233D]/5 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DashboardCard({ title, children }) {
+  return (
+    <div className="bg-white rounded-xl p-3.5 shadow-sm border border-[#12233D]/5">
+      <p className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold mb-3">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function Dashboard({ records, activity }) {
+  const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
+
+  const statusData = useMemo(() => {
+    const counts = {};
+    STATUS_OPTIONS.forEach((s) => (counts[s.key] = 0));
+    records.forEach((r) => {
+      const s = getStatus(r._id);
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return STATUS_OPTIONS.map((s) => ({
+      label: s.label,
+      value: counts[s.key],
+      color: s.color,
+    }));
+  }, [records, activity]);
+
+  const matriksData = useMemo(() => {
+    const counts = {};
+    records.forEach((r) => {
+      const m = String(r.matriks || "").toUpperCase().trim();
+      if (!m) return;
+      counts[m] = (counts[m] || 0) + 1;
+    });
+    const order = ["LOW", "MEDIUM", "MEDIUM HIGH", "HIGH"];
+    return Object.entries(counts)
+      .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
+      .map(([label, value]) => ({
+        label,
+        value,
+        color: matriksColor(label),
+      }));
+  }, [records]);
+
+  const cabangOutstanding = useMemo(() => {
+    const map = {};
+    records.forEach((r) => {
+      if (!r.cabang) return;
+      map[r.cabang] = (map[r.cabang] || 0) + (Number(r.balPrin) || 0);
+    });
+    return Object.entries(map)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [records]);
+
+  const recoCount = useMemo(() => {
+    const map = {};
+    records.forEach((r) => {
+      if (!r.recoveryHead) return;
+      map[r.recoveryHead] = (map[r.recoveryHead] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [records]);
+
+  const maxStatus = Math.max(1, ...statusData.map((d) => d.value));
+  const maxMatriks = Math.max(1, ...matriksData.map((d) => d.value));
+  const maxCabang = Math.max(1, ...cabangOutstanding.map((d) => d.value));
+  const maxReco = Math.max(1, ...recoCount.map((d) => d.value));
+
+  return (
+    <div className="px-4 mt-4 space-y-3 pb-6">
+      <DashboardCard title="Status Collection">
+        {statusData.map((d) => (
+          <BarRow
+            key={d.label}
+            label={d.label}
+            value={d.value}
+            max={maxStatus}
+            color={d.color}
+          />
+        ))}
+      </DashboardCard>
+
+      {matriksData.length > 0 && (
+        <DashboardCard title="Matriks Risiko">
+          {matriksData.map((d) => (
+            <BarRow
+              key={d.label}
+              label={d.label}
+              value={d.value}
+              max={maxMatriks}
+              color={d.color}
+            />
+          ))}
+        </DashboardCard>
+      )}
+
+      {cabangOutstanding.length > 0 && (
+        <DashboardCard title="Top 10 Cabang — Sisa Hutang">
+          {cabangOutstanding.map((d) => (
+            <BarRow
+              key={d.label}
+              label={d.label}
+              value={d.value}
+              max={maxCabang}
+              color="#C98A2C"
+              formatValue={formatRp}
+            />
+          ))}
+        </DashboardCard>
+      )}
+
+      {recoCount.length > 0 && (
+        <DashboardCard title="Top 10 Recovery Head — Jumlah Kontrak">
+          {recoCount.map((d) => (
+            <BarRow
+              key={d.label}
+              label={d.label}
+              value={d.value}
+              max={maxReco}
+              color="#2A6FB0"
+            />
+          ))}
+        </DashboardCard>
+      )}
+    </div>
+  );
+}
+
