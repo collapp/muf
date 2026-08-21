@@ -22,6 +22,11 @@ import {
   ClipboardList,
   LayoutDashboard,
   List,
+  PieChart,
+  ListChecks,
+  AlertTriangle,
+  Building2,
+  Trophy,
 } from "lucide-react";
 
 // ---------- field mapping ----------
@@ -118,6 +123,30 @@ function formatRp(n) {
   const v = Number(n);
   if (!n || isNaN(v)) return "-";
   return "Rp " + v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
+}
+function formatRpCompact(n) {
+  const v = Number(n);
+  if (!n || isNaN(v)) return "-";
+  const abs = Math.abs(v);
+  if (abs >= 1e9)
+    return (
+      "Rp " +
+      (v / 1e9).toLocaleString("id-ID", { maximumFractionDigits: 1 }) +
+      " M"
+    );
+  if (abs >= 1e6)
+    return (
+      "Rp " +
+      (v / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 1 }) +
+      " Jt"
+    );
+  if (abs >= 1e3)
+    return (
+      "Rp " +
+      (v / 1e3).toLocaleString("id-ID", { maximumFractionDigits: 0 }) +
+      " rb"
+    );
+  return "Rp " + v.toLocaleString("id-ID");
 }
 function formatDate(v) {
   if (!v) return "-";
@@ -609,7 +638,7 @@ export default function CollectionApp() {
                     setSelected(r);
                     setWarnaDraft(activity[r._id]?.warnaKendaraan || "");
                   }}
-                  className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-sm border border-[#12233D]/5 active:scale-[0.99] transition-transform"
+                  className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] active:scale-[0.99] transition-transform"
                   style={{ borderLeft: `4px solid ${st.color}` }}
                 >
                   <div className="flex-1 min-w-0">
@@ -985,65 +1014,115 @@ function Fact({ icon: Icon, label, value, mono, strong }) {
   );
 }
 
-function BarRow({ label, value, max, color, formatValue, onClick }) {
+function BarRow({
+  label,
+  value,
+  max,
+  color,
+  formatValue,
+  onClick,
+  rank,
+  highlight,
+}) {
   const pct = max > 0 ? Math.max(4, (value / max) * 100) : 0;
   return (
     <button
       type="button"
       disabled={!onClick}
       onClick={onClick}
-      className={`w-full text-left mb-2.5 last:mb-0 ${
-        onClick ? "active:opacity-60" : ""
-      }`}
+      className={`w-full text-left mb-3 last:mb-0 rounded-lg -mx-1.5 px-1.5 py-1 transition-colors ${
+        onClick ? "active:bg-[#12233D]/[0.04]" : ""
+      } ${highlight ? "bg-[#C98A2C]/[0.06]" : ""}`}
     >
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="text-[#12233D]/70 truncate pr-2 flex items-center gap-1">
+      <div className="flex items-center justify-between text-xs mb-1.5">
+        <span className="text-[#12233D]/80 font-medium truncate pr-2 flex items-center gap-1.5">
+          {rank && (
+            <span
+              className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+              style={{
+                backgroundColor: rank <= 3 ? color + "26" : "#12233D0D",
+                color: rank <= 3 ? color : "#12233D80",
+              }}
+            >
+              {rank}
+            </span>
+          )}
           {label}
           {onClick && (
-            <ChevronRight size={11} className="text-[#12233D]/30 shrink-0" />
+            <ChevronRight size={11} className="text-[#12233D]/25 shrink-0" />
           )}
         </span>
-        <span className="font-mono font-semibold shrink-0">
+        <span className="font-mono font-bold shrink-0 text-[#12233D]">
           {formatValue ? formatValue(value) : value.toLocaleString("id-ID")}
         </span>
       </div>
-      <div className="h-2 bg-[#12233D]/5 rounded-full overflow-hidden">
+      <div className="h-2.5 bg-[#12233D]/[0.06] rounded-full overflow-hidden">
         <div
-          className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${pct}%`,
+            background: `linear-gradient(90deg, ${color}CC, ${color})`,
+          }}
         />
       </div>
     </button>
   );
 }
 
-function DashboardCard({ title, right, children }) {
+function DashboardCard({ title, icon: Icon, accent = "#12233D", children }) {
   return (
-    <div className="bg-white rounded-xl p-3.5 shadow-sm border border-[#12233D]/5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+    <div className="bg-white rounded-2xl p-4 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04]">
+      <div className="flex items-center gap-2 mb-3.5">
+        {Icon && (
+          <span
+            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+            style={{ backgroundColor: accent + "1A", color: accent }}
+          >
+            <Icon size={14} strokeWidth={2.5} />
+          </span>
+        )}
+        <p className="text-[12px] uppercase tracking-wide text-[#12233D]/60 font-bold">
           {title}
         </p>
-        {right}
       </div>
       {children}
     </div>
   );
 }
 
-function KpiCard({ label, value, sub, accent }) {
+function KpiCard({ label, value, sub, accent, dark }) {
   return (
-    <div className="bg-white rounded-xl p-3 shadow-sm border border-[#12233D]/5">
-      <p className="text-[10px] uppercase tracking-wide text-[#12233D]/40 font-semibold">
+    <div
+      className={`rounded-2xl p-3.5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] ${
+        dark
+          ? "bg-gradient-to-br from-[#16294a] to-[#0d1a30] text-white"
+          : "bg-white border border-[#12233D]/[0.04]"
+      }`}
+    >
+      <p
+        className={`text-[10px] uppercase tracking-wide font-bold ${
+          dark ? "text-white/50" : "text-[#12233D]/40"
+        }`}
+      >
         {label}
       </p>
       <p
-        className="text-lg font-mono font-bold tabular-nums mt-0.5 truncate"
-        style={accent ? { color: accent } : undefined}
+        className={`text-lg font-mono font-extrabold tabular-nums mt-1 truncate ${
+          dark ? "text-white" : ""
+        }`}
+        style={!dark && accent ? { color: accent } : undefined}
       >
         {value}
       </p>
-      {sub && <p className="text-[10px] text-[#12233D]/40 mt-0.5">{sub}</p>}
+      {sub && (
+        <p
+          className={`text-[10px] mt-0.5 ${
+            dark ? "text-white/40" : "text-[#12233D]/40"
+          }`}
+        >
+          {sub}
+        </p>
+      )}
     </div>
   );
 }
@@ -1059,37 +1138,38 @@ function DonutChart({ data, total }) {
       return `${d.color} ${start}% ${acc}%`;
     });
   const bg =
-    stops.length > 0
-      ? `conic-gradient(${stops.join(", ")})`
-      : "#EEF0F3";
+    stops.length > 0 ? `conic-gradient(${stops.join(", ")})` : "#EEF0F3";
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-5">
       <div
-        className="relative w-24 h-24 rounded-full shrink-0"
+        className="relative w-28 h-28 rounded-full shrink-0 shadow-[0_4px_16px_-4px_rgba(18,35,61,0.25)]"
         style={{ background: bg }}
       >
-        <div className="absolute inset-[7px] bg-white rounded-full flex flex-col items-center justify-center">
-          <span className="text-base font-mono font-bold text-[#12233D]">
+        <div className="absolute inset-2 bg-white rounded-full flex flex-col items-center justify-center">
+          <span className="text-xl font-mono font-extrabold text-[#12233D]">
             {total.toLocaleString("id-ID")}
           </span>
-          <span className="text-[8px] uppercase tracking-wide text-[#12233D]/40">
+          <span className="text-[8px] uppercase tracking-wide text-[#12233D]/40 font-semibold">
             Kontrak
           </span>
         </div>
       </div>
-      <div className="flex-1 space-y-1.5">
+      <div className="flex-1 space-y-2">
         {data.map((d) => {
           const pct = total > 0 ? ((d.value / total) * 100).toFixed(0) : 0;
           return (
-            <div key={d.label} className="flex items-center gap-1.5 text-xs">
+            <div key={d.label} className="flex items-center gap-2 text-xs">
               <span
-                className="w-2 h-2 rounded-full shrink-0"
+                className="w-2.5 h-2.5 rounded-[3px] shrink-0"
                 style={{ backgroundColor: d.color }}
               />
               <span className="text-[#12233D]/70 truncate flex-1">
                 {d.label}
               </span>
-              <span className="font-mono font-semibold text-[#12233D]">
+              <span
+                className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded shrink-0"
+                style={{ color: d.color, backgroundColor: d.color + "1A" }}
+              >
                 {pct}%
               </span>
             </div>
@@ -1186,33 +1266,51 @@ function Dashboard({ records, activity, onFilter }) {
 
   return (
     <div className="px-4 mt-4 space-y-3 pb-6">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 gap-2">
-        <KpiCard
-          label="Total Kontrak"
-          value={records.length.toLocaleString("id-ID")}
-        />
-        <KpiCard
-          label="Total Sisa Hutang"
-          value={formatRp(totalOutstanding)}
-        />
-        <KpiCard
-          label="Lunas / Selesai"
-          value={lunasStats.count.toLocaleString("id-ID")}
-          sub={formatRp(lunasStats.value)}
-          accent="#2F7A4F"
-        />
-        <KpiCard
-          label="Rata-rata / Kontrak"
-          value={formatRp(avgOutstanding)}
-        />
+      {/* hero KPI */}
+      <div className="rounded-2xl p-4 bg-gradient-to-br from-[#16294a] to-[#0c1930] shadow-[0_8px_24px_-6px_rgba(18,35,61,0.35)] text-white">
+        <p className="text-[10px] uppercase tracking-[0.14em] text-[#C98A2C] font-bold">
+          Total Portofolio
+        </p>
+        <p className="text-2xl font-mono font-extrabold tabular-nums mt-1">
+          {formatRp(totalOutstanding)}
+        </p>
+        <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/10">
+          <div>
+            <p className="text-[9px] uppercase tracking-wide text-white/40 font-semibold">
+              Kontrak
+            </p>
+            <p className="text-sm font-mono font-bold mt-0.5">
+              {records.length.toLocaleString("id-ID")}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase tracking-wide text-white/40 font-semibold">
+              Lunas
+            </p>
+            <p className="text-sm font-mono font-bold mt-0.5 text-[#5CC98A]">
+              {lunasStats.count.toLocaleString("id-ID")}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase tracking-wide text-white/40 font-semibold">
+              Rata-rata
+            </p>
+            <p className="text-sm font-mono font-bold mt-0.5 truncate">
+              {formatRpCompact(avgOutstanding)}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <DashboardCard title="Proporsi Status Collection">
+      <DashboardCard
+        title="Proporsi Status Collection"
+        icon={PieChart}
+        accent="#12233D"
+      >
         <DonutChart data={statusData} total={records.length} />
       </DashboardCard>
 
-      <DashboardCard title="Status Collection">
+      <DashboardCard title="Status Collection" icon={ListChecks} accent="#2A6FB0">
         {statusData.map((d) => (
           <BarRow
             key={d.label}
@@ -1228,7 +1326,11 @@ function Dashboard({ records, activity, onFilter }) {
       </DashboardCard>
 
       {matriksData.length > 0 && (
-        <DashboardCard title="Matriks Risiko">
+        <DashboardCard
+          title="Matriks Risiko"
+          icon={AlertTriangle}
+          accent="#B23A2E"
+        >
           {matriksData.map((d) => (
             <BarRow
               key={d.label}
@@ -1236,6 +1338,7 @@ function Dashboard({ records, activity, onFilter }) {
               value={d.value}
               max={maxMatriks}
               color={d.color}
+              highlight={d.label === "HIGH"}
               onClick={() => onFilter("matriks", d.label)}
             />
           ))}
@@ -1243,15 +1346,21 @@ function Dashboard({ records, activity, onFilter }) {
       )}
 
       {cabangOutstanding.length > 0 && (
-        <DashboardCard title="Top 10 Cabang — Sisa Hutang">
-          {cabangOutstanding.map((d) => (
+        <DashboardCard
+          title="Top 10 Cabang — Sisa Hutang"
+          icon={Building2}
+          accent="#C98A2C"
+        >
+          {cabangOutstanding.map((d, i) => (
             <BarRow
               key={d.label}
               label={d.label}
               value={d.value}
               max={maxCabang}
               color="#C98A2C"
-              formatValue={formatRp}
+              formatValue={formatRpCompact}
+              rank={i + 1}
+              highlight={i === 0}
               onClick={() => onFilter("cabang", d.label)}
             />
           ))}
@@ -1259,14 +1368,20 @@ function Dashboard({ records, activity, onFilter }) {
       )}
 
       {recoCount.length > 0 && (
-        <DashboardCard title="Top 10 Recovery Head — Jumlah Kontrak">
-          {recoCount.map((d) => (
+        <DashboardCard
+          title="Top 10 Recovery Head — Jumlah Kontrak"
+          icon={Trophy}
+          accent="#2A6FB0"
+        >
+          {recoCount.map((d, i) => (
             <BarRow
               key={d.label}
               label={d.label}
               value={d.value}
               max={maxReco}
               color="#2A6FB0"
+              rank={i + 1}
+              highlight={i === 0}
               onClick={() => onFilter("reco", d.label)}
             />
           ))}
