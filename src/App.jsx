@@ -15,6 +15,11 @@ import {
   Plus,
   Check,
   AlertCircle,
+  Phone,
+  Briefcase,
+  Store,
+  UserCog,
+  ClipboardList,
 } from "lucide-react";
 
 // ---------- field mapping ----------
@@ -35,6 +40,19 @@ const FIELD_CANDIDATES = {
   tglWO: ["WODATENEW", "TGLWO", "WODATE"],
   tenor: ["TENOR"],
   balPrin: ["BALPRIN", "BALPRINT", "SISAHUTANG"],
+  noHp: ["NOHP"],
+  pekerjaan: ["PEKERJAAN"],
+  dealer: ["DEALER"],
+  alamatKtp: ["ALAMATKTP"],
+  alamatTagih: ["ALAMATTAGIH"],
+  kecamatan: ["KECAMATAN"],
+  collector: ["COLLECTOR"],
+  recoveryHead: ["RECOVERYHEAD"],
+  statusRumah: ["STATUSRUMAHNASABAH"],
+  kronologis: ["KRONOLOGIS"],
+  tanggalJT: ["TANGGALJT"],
+  deliquency: ["DELIQUENCY"],
+  statusDebitur: ["STATUSDEBITUR"],
 };
 
 const FIELD_LABELS = {
@@ -52,6 +70,19 @@ const FIELD_LABELS = {
   tglWO: "Tgl WO",
   tenor: "Tenor",
   balPrin: "Sisa Hutang",
+  noHp: "No HP",
+  pekerjaan: "Pekerjaan",
+  dealer: "Dealer",
+  alamatKtp: "Alamat KTP",
+  alamatTagih: "Alamat Tagih",
+  kecamatan: "Kecamatan",
+  collector: "Collector",
+  recoveryHead: "Recovery Head",
+  statusRumah: "Status Rumah",
+  kronologis: "Kronologis",
+  tanggalJT: "Tanggal Jatuh Tempo",
+  deliquency: "Deliquency",
+  statusDebitur: "Status Debitur",
 };
 
 const STATUS_OPTIONS = [
@@ -172,6 +203,7 @@ export default function CollectionApp() {
   const [uploadMsg, setUploadMsg] = useState(null);
   const [search, setSearch] = useState("");
   const [cabangFilter, setCabangFilter] = useState("");
+  const [recoFilter, setRecoFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
@@ -194,12 +226,18 @@ export default function CollectionApp() {
     return Array.from(set).sort();
   }, [records]);
 
+  const recoList = useMemo(() => {
+    const set = new Set(records.map((r) => r.recoveryHead).filter(Boolean));
+    return Array.from(set).sort();
+  }, [records]);
+
   const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return records.filter((r) => {
       if (cabangFilter && r.cabang !== cabangFilter) return false;
+      if (recoFilter && r.recoveryHead !== recoFilter) return false;
       if (statusFilter && getStatus(r._id) !== statusFilter) return false;
       if (!q) return true;
       return [
@@ -209,11 +247,12 @@ export default function CollectionApp() {
         r.noMesin,
         r.noRangka,
         r.namaBpkb,
+        r.noHp,
       ]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [records, search, cabangFilter, statusFilter, activity]);
+  }, [records, search, cabangFilter, recoFilter, statusFilter, activity]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRecords = filtered.slice(
@@ -226,7 +265,7 @@ export default function CollectionApp() {
     [records]
   );
 
-  useEffect(() => setPage(1), [search, cabangFilter, statusFilter]);
+  useEffect(() => setPage(1), [search, cabangFilter, recoFilter, statusFilter]);
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
@@ -413,6 +452,18 @@ export default function CollectionApp() {
                 {cabangList.map((c) => (
                   <option key={c} value={c}>
                     {c}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={recoFilter}
+                onChange={(e) => setRecoFilter(e.target.value)}
+                className="text-xs bg-white border border-[#12233D]/10 rounded-lg px-2.5 py-1.5 shrink-0"
+              >
+                <option value="">Semua Reco</option>
+                {recoList.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
                   </option>
                 ))}
               </select>
@@ -631,6 +682,86 @@ export default function CollectionApp() {
                 <div className="col-span-2">
                   <Fact label="Alamat" value={selected.alamat} />
                 </div>
+              </div>
+
+              {/* contact & collector info */}
+              <div className="bg-white rounded-xl p-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[#12233D]/40 flex items-center gap-1">
+                    <Phone size={10} /> No HP
+                  </p>
+                  {selected.noHp ? (
+                    <a
+                      href={`tel:${String(selected.noHp).split("//")[0].trim()}`}
+                      className="text-sm mt-0.5 font-mono font-semibold text-[#2A6FB0] block"
+                    >
+                      {selected.noHp}
+                    </a>
+                  ) : (
+                    <p className="text-sm mt-0.5 font-medium">-</p>
+                  )}
+                </div>
+                <Fact
+                  icon={Briefcase}
+                  label="Pekerjaan"
+                  value={selected.pekerjaan}
+                />
+                <Fact icon={Store} label="Dealer" value={selected.dealer} />
+                <Fact label="Kecamatan" value={selected.kecamatan} />
+                <Fact
+                  icon={UserCog}
+                  label="Collector"
+                  value={selected.collector}
+                />
+                <Fact
+                  icon={UserCog}
+                  label="Recovery Head"
+                  value={selected.recoveryHead}
+                />
+                <Fact
+                  label="Status Debitur"
+                  value={selected.statusDebitur}
+                />
+                <Fact
+                  label="Status Rumah"
+                  value={selected.statusRumah}
+                />
+                <Fact
+                  icon={Calendar}
+                  label="Tanggal Jatuh Tempo"
+                  value={
+                    selected.tanggalJT && selected.tanggalJT !== "00:00:00"
+                      ? String(selected.tanggalJT)
+                      : "-"
+                  }
+                />
+                <Fact label="Deliquency" value={selected.deliquency} />
+                {selected.kronologis && (
+                  <div className="col-span-2">
+                    <Fact
+                      icon={ClipboardList}
+                      label="Kronologis"
+                      value={selected.kronologis}
+                    />
+                  </div>
+                )}
+                {(selected.alamatKtp || selected.alamatTagih) && (
+                  <>
+                    {selected.alamatKtp && (
+                      <div className="col-span-2">
+                        <Fact label="Alamat KTP" value={selected.alamatKtp} />
+                      </div>
+                    )}
+                    {selected.alamatTagih && (
+                      <div className="col-span-2">
+                        <Fact
+                          label="Alamat Tagih"
+                          value={selected.alamatTagih}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* notes */}
