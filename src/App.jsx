@@ -27,6 +27,11 @@ import {
   AlertTriangle,
   Building2,
   Trophy,
+  Users,
+  CheckCircle2,
+  TrendingUp,
+  Download,
+  Save,
 } from "lucide-react";
 
 // ---------- field mapping ----------
@@ -235,6 +240,10 @@ async function loadJSON(key, fallback) {
 async function saveJSON(key, value) {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    window.localStorage.setItem(
+      "wo-last-saved",
+      JSON.stringify(new Date().toISOString())
+    );
   } catch (e) {
     console.error("storage error", e);
   }
@@ -259,17 +268,28 @@ export default function CollectionApp() {
   const [noteDraft, setNoteDraft] = useState("");
   const [warnaDraft, setWarnaDraft] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
   const fileInput = useRef(null);
 
   useEffect(() => {
     (async () => {
       const r = await loadJSON("wo-records", []);
       const a = await loadJSON("wo-activity", {});
+      const ls = await loadJSON("wo-last-saved", null);
       setRecords(r);
       setActivity(a);
+      if (ls) setLastSaved(new Date(ls));
       setReady(true);
     })();
   }, []);
+
+  // keep the "tersimpan otomatis" indicator in sync after every save
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("wo-last-saved");
+      if (raw) setLastSaved(new Date(JSON.parse(raw)));
+    } catch (e) {}
+  }, [records, activity]);
 
   const cabangList = useMemo(() => {
     const set = new Set(records.map((r) => r.cabang).filter(Boolean));
@@ -401,6 +421,42 @@ export default function CollectionApp() {
     setSelected(null);
   }
 
+  function exportBackup() {
+    const rows = records.map((r) => {
+      const act = activity[r._id] || {};
+      const notesText = (act.notes || [])
+        .slice()
+        .reverse()
+        .map(
+          (n) =>
+            `[${new Date(n.ts).toLocaleString("id-ID")}] ${n.text}`
+        )
+        .join(" | ");
+      return {
+        "No Kontrak": r.noKontrak,
+        Konsumen: r.konsumen,
+        Cabang: r.cabang,
+        "No Polisi": r.noPolisi,
+        Merk: r.merk,
+        Tipe: r.tipe,
+        Tahun: r.tahun,
+        "No Mesin": r.noMesin,
+        "No Rangka": r.noRangka,
+        "Sisa Hutang": r.balPrin,
+        "Matriks Risiko": r.matriks,
+        "Recovery Head": r.recoveryHead,
+        "Status Collection": statusInfo(getStatus(r._id)).label,
+        "Warna Kendaraan (manual)": act.warnaKendaraan || "",
+        "Catatan Kunjungan": notesText,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Backup Collection");
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Backup_Collection_${stamp}.xlsx`);
+  }
+
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#12233D]">
@@ -422,13 +478,24 @@ export default function CollectionApp() {
               Portofolio Write Off
             </h1>
           </div>
-          <button
-            onClick={() => fileInput.current?.click()}
-            className="flex items-center gap-1.5 bg-[#C98A2C] hover:bg-[#B67923] text-[#12233D] font-semibold text-sm px-3 py-2 rounded-lg transition-colors"
-          >
-            <Upload size={16} />
-            {records.length ? "Ganti" : "Upload"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {records.length > 0 && (
+              <button
+                onClick={exportBackup}
+                title="Backup ke Excel"
+                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2.5 py-2 rounded-lg transition-colors"
+              >
+                <Download size={16} />
+              </button>
+            )}
+            <button
+              onClick={() => fileInput.current?.click()}
+              className="flex items-center gap-1.5 bg-[#C98A2C] hover:bg-[#B67923] text-[#12233D] font-semibold text-sm px-3 py-2 rounded-lg transition-colors"
+            >
+              <Upload size={16} />
+              {records.length ? "Ganti" : "Upload"}
+            </button>
+          </div>
           <input
             ref={fileInput}
             type="file"
@@ -457,6 +524,18 @@ export default function CollectionApp() {
               </p>
             </div>
           </div>
+        )}
+
+        {records.length > 0 && (
+          <p className="flex items-center gap-1 text-[10px] text-white/40 mt-2.5">
+            <Save size={11} />
+            {lastSaved
+              ? `Tersimpan otomatis di HP ini · ${lastSaved.toLocaleTimeString(
+                  "id-ID",
+                  { hour: "2-digit", minute: "2-digit" }
+                )}`
+              : "Tersimpan otomatis di HP ini"}
+          </p>
         )}
       </div>
 
@@ -1071,7 +1150,12 @@ function BarRow({
 
 function DashboardCard({ title, icon: Icon, accent = "#12233D", children }) {
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04]">
+    <div
+      className="rounded-2xl p-4 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04]"
+      style={{
+        background: `linear-gradient(160deg, ${accent}0D 0%, #ffffff 22%)`,
+      }}
+    >
       <div className="flex items-center gap-2 mb-3.5">
         {Icon && (
           <span
@@ -1090,36 +1174,45 @@ function DashboardCard({ title, icon: Icon, accent = "#12233D", children }) {
   );
 }
 
-function KpiCard({ label, value, sub, accent, dark }) {
-  return (
-    <div
-      className={`rounded-2xl p-3.5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] ${
-        dark
-          ? "bg-gradient-to-br from-[#16294a] to-[#0d1a30] text-white"
-          : "bg-white border border-[#12233D]/[0.04]"
-      }`}
-    >
-      <p
-        className={`text-[10px] uppercase tracking-wide font-bold ${
-          dark ? "text-white/50" : "text-[#12233D]/40"
-        }`}
+function KpiCard({ label, value, sub, icon: Icon, gradient }) {
+  if (gradient) {
+    return (
+      <div
+        className="rounded-2xl p-3.5 text-white overflow-hidden relative"
+        style={{
+          background: `linear-gradient(135deg, ${gradient[0]}, ${gradient[1]})`,
+          boxShadow: `0 10px 24px -8px ${gradient[1]}80`,
+        }}
       >
+        {Icon && (
+          <Icon
+            size={54}
+            strokeWidth={1.5}
+            className="absolute -right-2 -bottom-2 opacity-20"
+          />
+        )}
+        <p className="text-[10px] uppercase tracking-wide font-bold text-white/70 relative">
+          {label}
+        </p>
+        <p className="text-lg font-mono font-extrabold tabular-nums mt-1 truncate relative">
+          {value}
+        </p>
+        {sub && (
+          <p className="text-[10px] mt-0.5 text-white/60 relative">{sub}</p>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl p-3.5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] bg-white border border-[#12233D]/[0.04]">
+      <p className="text-[10px] uppercase tracking-wide font-bold text-[#12233D]/40">
         {label}
       </p>
-      <p
-        className={`text-lg font-mono font-extrabold tabular-nums mt-1 truncate ${
-          dark ? "text-white" : ""
-        }`}
-        style={!dark && accent ? { color: accent } : undefined}
-      >
+      <p className="text-lg font-mono font-extrabold tabular-nums mt-1 truncate">
         {value}
       </p>
       {sub && (
-        <p
-          className={`text-[10px] mt-0.5 ${
-            dark ? "text-white/40" : "text-[#12233D]/40"
-          }`}
-        >
+        <p className="text-[10px] mt-0.5 text-[#12233D]/40">
           {sub}
         </p>
       )}
@@ -1266,40 +1359,34 @@ function Dashboard({ records, activity, onFilter }) {
 
   return (
     <div className="px-4 mt-4 space-y-3 pb-6">
-      {/* hero KPI */}
-      <div className="rounded-2xl p-4 bg-gradient-to-br from-[#16294a] to-[#0c1930] shadow-[0_8px_24px_-6px_rgba(18,35,61,0.35)] text-white">
-        <p className="text-[10px] uppercase tracking-[0.14em] text-[#C98A2C] font-bold">
-          Total Portofolio
-        </p>
-        <p className="text-2xl font-mono font-extrabold tabular-nums mt-1">
-          {formatRp(totalOutstanding)}
-        </p>
-        <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/10">
-          <div>
-            <p className="text-[9px] uppercase tracking-wide text-white/40 font-semibold">
-              Kontrak
-            </p>
-            <p className="text-sm font-mono font-bold mt-0.5">
-              {records.length.toLocaleString("id-ID")}
-            </p>
-          </div>
-          <div>
-            <p className="text-[9px] uppercase tracking-wide text-white/40 font-semibold">
-              Lunas
-            </p>
-            <p className="text-sm font-mono font-bold mt-0.5 text-[#5CC98A]">
-              {lunasStats.count.toLocaleString("id-ID")}
-            </p>
-          </div>
-          <div>
-            <p className="text-[9px] uppercase tracking-wide text-white/40 font-semibold">
-              Rata-rata
-            </p>
-            <p className="text-sm font-mono font-bold mt-0.5 truncate">
-              {formatRpCompact(avgOutstanding)}
-            </p>
-          </div>
-        </div>
+      {/* colorful KPI cards */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <KpiCard
+          label="Total Sisa Hutang"
+          value={formatRpCompact(totalOutstanding)}
+          sub={formatRp(totalOutstanding)}
+          icon={Wallet}
+          gradient={["#2E6BE6", "#1B3FAE"]}
+        />
+        <KpiCard
+          label="Total Kontrak"
+          value={records.length.toLocaleString("id-ID")}
+          icon={Users}
+          gradient={["#8B5CF6", "#5B3EC9"]}
+        />
+        <KpiCard
+          label="Lunas / Selesai"
+          value={lunasStats.count.toLocaleString("id-ID")}
+          sub={formatRpCompact(lunasStats.value)}
+          icon={CheckCircle2}
+          gradient={["#22B573", "#0E8A56"]}
+        />
+        <KpiCard
+          label="Rata-rata / Kontrak"
+          value={formatRpCompact(avgOutstanding)}
+          icon={TrendingUp}
+          gradient={["#F0932F", "#D9702E"]}
+        />
       </div>
 
       <DashboardCard
