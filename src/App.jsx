@@ -6,6 +6,7 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  RotateCcw,
   FileSpreadsheet,
   MapPin,
   Hash,
@@ -78,6 +79,9 @@ const FIELD_CANDIDATES = {
   noRangka: ["NORANGKA"],
   tglWO: ["WODATENEW", "TGLWO", "WODATE"],
   tenor: ["TENOR"],
+  sisaTenor: ["SISATENOR"],
+  ke: ["KE"],
+  hariTunggakan: ["HARI"],
   balPrin: ["BALPRIN", "BALPRINT", "SISAHUTANG"],
   noHp: ["NOHP"],
   pekerjaan: ["PEKERJAAN"],
@@ -109,6 +113,9 @@ const FIELD_LABELS = {
   noRangka: "No Rangka",
   tglWO: "Tgl WO",
   tenor: "Tenor",
+  sisaTenor: "Sisa Tenor",
+  ke: "Angsuran Ke",
+  hariTunggakan: "Hari Tunggakan",
   balPrin: "Sisa Hutang",
   noHp: "No HP",
   pekerjaan: "Pekerjaan",
@@ -1157,6 +1164,21 @@ function MainApp({ user, onLogout }) {
                   </div>
                 </div>
                 <Fact label="Tenor" value={`${selected.tenor || "-"} bln`} />
+                <Fact
+                  label="Sisa Tenor"
+                  value={
+                    selected.sisaTenor ? `${selected.sisaTenor} bln` : "-"
+                  }
+                />
+                <Fact label="Angsuran Ke" value={selected.ke} />
+                <Fact
+                  label="Hari Tunggakan"
+                  value={
+                    selected.hariTunggakan
+                      ? `${selected.hariTunggakan} hari`
+                      : "-"
+                  }
+                />
                 <Fact label="Nama BPKB" value={selected.namaBpkb} />
                 <Fact label="No Mesin" value={selected.noMesin} mono />
                 <Fact label="No Rangka" value={selected.noRangka} mono />
@@ -1728,6 +1750,16 @@ function Dashboard({ records, onFilter }) {
   const getStatus = (r) => r?.status || "belum_dihubungi";
   const [selectedReco, setSelectedReco] = useState(null);
 
+  // when a Recovery Head is selected, every other dashboard widget scopes
+  // down to just their contracts — until reset (selecting none again)
+  const scopedRecords = useMemo(
+    () =>
+      selectedReco
+        ? records.filter((r) => r.recoveryHead === selectedReco)
+        : records,
+    [records, selectedReco]
+  );
+
   const recoDetail = useMemo(() => {
     if (!selectedReco) return null;
     const list = records.filter((r) => r.recoveryHead === selectedReco);
@@ -1744,7 +1776,7 @@ function Dashboard({ records, onFilter }) {
   const statusData = useMemo(() => {
     const counts = {};
     STATUS_OPTIONS.forEach((s) => (counts[s.key] = 0));
-    records.forEach((r) => {
+    scopedRecords.forEach((r) => {
       const s = getStatus(r);
       counts[s] = (counts[s] || 0) + 1;
     });
@@ -1754,11 +1786,11 @@ function Dashboard({ records, onFilter }) {
       value: counts[s.key],
       color: s.color,
     }));
-  }, [records]);
+  }, [scopedRecords]);
 
   const matriksData = useMemo(() => {
     const counts = {};
-    records.forEach((r) => {
+    scopedRecords.forEach((r) => {
       const m = String(r.matriks || "").toUpperCase().trim();
       if (!m) return;
       counts[m] = (counts[m] || 0) + 1;
@@ -1771,11 +1803,11 @@ function Dashboard({ records, onFilter }) {
         value,
         color: matriksColor(label),
       }));
-  }, [records]);
+  }, [scopedRecords]);
 
   const cabangStats = useMemo(() => {
     const map = {};
-    records.forEach((r) => {
+    scopedRecords.forEach((r) => {
       if (!r.cabang) return;
       if (!map[r.cabang]) map[r.cabang] = { value: 0, count: 0, high: 0 };
       map[r.cabang].value += Number(r.balPrin) || 0;
@@ -1787,7 +1819,7 @@ function Dashboard({ records, onFilter }) {
     return Object.entries(map)
       .map(([label, v]) => ({ label, ...v }))
       .sort((a, b) => b.value - a.value);
-  }, [records]);
+  }, [scopedRecords]);
 
   const cabangOutstanding = useMemo(
     () => cabangStats.slice(0, 10),
@@ -1809,29 +1841,29 @@ function Dashboard({ records, onFilter }) {
   const lunasStats = useMemo(() => {
     let count = 0;
     let value = 0;
-    records.forEach((r) => {
+    scopedRecords.forEach((r) => {
       if (getStatus(r) === "lunas") {
         count++;
         value += Number(r.balPrin) || 0;
       }
     });
     return { count, value };
-  }, [records]);
+  }, [scopedRecords]);
 
   const totalOutstanding = useMemo(
-    () => records.reduce((sum, r) => sum + (Number(r.balPrin) || 0), 0),
-    [records]
+    () => scopedRecords.reduce((sum, r) => sum + (Number(r.balPrin) || 0), 0),
+    [scopedRecords]
   );
-  const avgOutstanding = records.length
-    ? totalOutstanding / records.length
+  const avgOutstanding = scopedRecords.length
+    ? totalOutstanding / scopedRecords.length
     : 0;
 
   const highCount = useMemo(
     () =>
-      records.filter(
+      scopedRecords.filter(
         (r) => String(r.matriks || "").toUpperCase().trim() === "HIGH"
       ).length,
-    [records]
+    [scopedRecords]
   );
 
   const maxStatus = Math.max(1, ...statusData.map((d) => d.value));
@@ -1841,6 +1873,20 @@ function Dashboard({ records, onFilter }) {
 
   return (
     <div className="px-4 sm:px-6 mt-4 pb-6">
+      {selectedReco && (
+        <div className="flex items-center justify-between bg-[#2A6FB0]/10 text-[#2A6FB0] rounded-lg px-3 py-2 mb-3 text-xs font-semibold">
+          <span>
+            Dashboard difilter untuk Recovery Head: {selectedReco}
+          </span>
+          <button
+            onClick={() => setSelectedReco(null)}
+            className="flex items-center gap-1 underline shrink-0 ml-2"
+          >
+            <RotateCcw size={12} /> Reset
+          </button>
+        </div>
+      )}
+
       {/* colorful KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <KpiCard
@@ -1851,7 +1897,7 @@ function Dashboard({ records, onFilter }) {
         />
         <KpiCard
           label="Total Kontrak"
-          value={records.length.toLocaleString("id-ID")}
+          value={scopedRecords.length.toLocaleString("id-ID")}
           icon={Users}
           gradient={["#8B5CF6", "#5B3EC9"]}
         />
@@ -1876,7 +1922,7 @@ function Dashboard({ records, onFilter }) {
         icon={PieChart}
         accent="#12233D"
       >
-        <DonutChart data={statusData} total={records.length} />
+        <DonutChart data={statusData} total={scopedRecords.length} />
       </DashboardCard>
 
       <div className="lg:col-span-2">
@@ -1885,7 +1931,7 @@ function Dashboard({ records, onFilter }) {
 
       <div className="lg:col-span-2">
       <InsightCard
-        records={records}
+        records={scopedRecords}
         cabangStats={cabangStats}
         recoCount={recoCount}
         highCount={highCount}
