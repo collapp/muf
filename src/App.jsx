@@ -32,6 +32,7 @@ import {
   TrendingUp,
   Download,
   Save,
+  Lightbulb,
 } from "lucide-react";
 
 // ---------- field mapping ----------
@@ -1273,6 +1274,231 @@ function DonutChart({ data, total }) {
   );
 }
 
+// ---------- branch map ----------
+// Approximate coordinates for common Sumbagut (North Sumatra region)
+// cities/regencies. Branch names are matched by substring, so entries
+// like "KOTA PEKANBARU 2" or "KAB. LABUHANBATU-RANTAU PRAPAT" still
+// resolve to the right pin.
+const CITY_COORDS = {
+  "PEMATANG SIANTAR": [2.9595, 99.0687],
+  "TANJUNG PINANG": [0.9186, 104.4562],
+  "PADANG SIDEMPUAN": [1.3792, 99.2727],
+  "TANJUNG BALAI": [2.9861, 99.8022],
+  "RANTAU PRAPAT": [2.0947, 99.8371],
+  "LABUHANBATU": [2.0947, 99.8371],
+  "TEBING TINGGI": [3.3285, 99.1625],
+  "KUALA SIMPANG": [4.3743, 98.0019],
+  "GUNUNGSITOLI": [1.2907, 97.6162],
+  "LHOKSEUMAWE": [5.1801, 97.1507],
+  "BANDA ACEH": [5.5483, 95.3238],
+  "MEULABOH": [4.1372, 96.1282],
+  "BENGKALIS": [1.4649, 102.0985],
+  "TAKENGON": [4.6281, 96.836],
+  "SIBOLGA": [1.7427, 98.7793],
+  "BIREUEN": [5.2033, 96.7009],
+  "PEKANBARU": [0.5071, 101.4478],
+  "KISARAN": [2.9847, 99.6134],
+  "SUBULUSSALAM": [2.698, 97.941],
+  "LANGSA": [4.4683, 97.9683],
+  "BINJAI": [3.6001, 98.4854],
+  "MEDAN": [3.5952, 98.6722],
+  "BATAM": [1.1301, 104.0529],
+  "DUMAI": [1.6667, 101.45],
+  "SIGLI": [5.3861, 95.96],
+  "SIAK": [0.8564, 102.0367],
+  "DURI": [1.2657, 101.2557],
+};
+
+function findCoords(cabangName) {
+  const norm = String(cabangName || "")
+    .toUpperCase()
+    .replace(/^KOTA\s+/, "")
+    .replace(/^KAB\.?\s+/, "")
+    .replace(/^KABUPATEN\s+/, "")
+    .trim();
+  const keys = Object.keys(CITY_COORDS).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (norm.includes(key)) return CITY_COORDS[key];
+  }
+  return null;
+}
+
+function MapCard({ cabangStats, onFilter }) {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const [available] = useState(
+    typeof window !== "undefined" && !!window.L
+  );
+
+  const placed = useMemo(() => {
+    return cabangStats
+      .map((c) => ({ ...c, coords: findCoords(c.label) }))
+      .filter((c) => c.coords);
+  }, [cabangStats]);
+
+  useEffect(() => {
+    if (!available || !containerRef.current || mapRef.current) return;
+    const L = window.L;
+    const map = L.map(containerRef.current, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([2.5, 99.5], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap",
+      maxZoom: 18,
+    }).addTo(map);
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [available]);
+
+  useEffect(() => {
+    if (!mapRef.current || !window.L) return;
+    const L = window.L;
+    const map = mapRef.current;
+    const markers = [];
+    const maxVal = Math.max(1, ...placed.map((c) => c.value));
+
+    placed.forEach((c) => {
+      const size = Math.round(16 + (c.value / maxVal) * 26);
+      const icon = L.divIcon({
+        html: `
+          <div style="position:relative;width:${size}px;height:${size}px;">
+            <span class="animate-ping" style="position:absolute;inset:0;border-radius:9999px;background:#C98A2C;opacity:0.4;"></span>
+            <span style="position:absolute;inset:0;border-radius:9999px;background:#C98A2C;border:2px solid white;box-shadow:0 2px 6px rgba(18,35,61,0.4);"></span>
+          </div>`,
+        className: "",
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+      });
+      const marker = L.marker(c.coords, { icon }).addTo(map);
+      marker.bindPopup(
+        `<div style="font-family:sans-serif;min-width:150px">
+          <b>${c.label}</b><br/>
+          ${c.count.toLocaleString("id-ID")} kontrak<br/>
+          ${formatRp(c.value)}
+        </div>`
+      );
+      marker.on("click", () => onFilter("cabang", c.label));
+      markers.push(marker);
+    });
+
+    return () => {
+      markers.forEach((m) => map.removeLayer(m));
+    };
+  }, [placed]);
+
+  if (!available) {
+    return (
+      <DashboardCard title="Peta Sebaran Cabang" icon={MapPin} accent="#C98A2C">
+        <p className="text-xs text-[#12233D]/50 py-6 text-center">
+          Peta hanya tersedia di versi web yang sudah di-deploy (butuh akses
+          internet untuk memuat peta).
+        </p>
+      </DashboardCard>
+    );
+  }
+
+  return (
+    <DashboardCard title="Peta Sebaran Cabang" icon={MapPin} accent="#C98A2C">
+      <div
+        ref={containerRef}
+        className="w-full h-64 rounded-xl overflow-hidden"
+      />
+      <p className="text-[10px] text-[#12233D]/40 mt-2">
+        {placed.length} dari {cabangStats.length} cabang berhasil dipetakan ·
+        ukuran titik = besar sisa hutang · tap titik untuk lihat detail
+      </p>
+    </DashboardCard>
+  );
+}
+
+function InsightCard({ records, activity, cabangStats, recoCount, highCount }) {
+  const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
+  const total = records.length;
+  const totalOutstanding = records.reduce(
+    (s, r) => s + (Number(r.balPrin) || 0),
+    0
+  );
+
+  const insights = [];
+
+  if (cabangStats.length > 0) {
+    const top = cabangStats[0];
+    const share = totalOutstanding > 0 ? (top.value / totalOutstanding) * 100 : 0;
+    insights.push(
+      `Cabang ${top.label} menyumbang ${share.toFixed(
+        0
+      )}% dari total sisa hutang (${formatRpCompact(
+        top.value
+      )}) — konsentrasi risiko terbesar ada di sini.`
+    );
+  }
+
+  if (highCount > 0) {
+    const pct = total > 0 ? (highCount / total) * 100 : 0;
+    insights.push(
+      `${highCount.toLocaleString(
+        "id-ID"
+      )} kontrak (${pct.toFixed(
+        0
+      )}%) masuk Matriks Risiko HIGH — prioritaskan penanganan kelompok ini.`
+    );
+  }
+
+  const belum = records.filter(
+    (r) => getStatus(r._id) === "belum_dihubungi"
+  ).length;
+  if (belum > 0) {
+    const pct = total > 0 ? (belum / total) * 100 : 0;
+    insights.push(
+      `${pct.toFixed(
+        0
+      )}% kontrak (${belum.toLocaleString(
+        "id-ID"
+      )}) masih berstatus "Belum Dihubungi" — potensi kerja lapangan yang belum tersentuh.`
+    );
+  }
+
+  if (recoCount.length > 0) {
+    const top = recoCount[0];
+    insights.push(
+      `${top.label} memegang portofolio terbanyak dengan ${top.value.toLocaleString(
+        "id-ID"
+      )} kontrak sebagai Recovery Head.`
+    );
+  }
+
+  if (cabangStats.length > 1) {
+    const bottom = cabangStats[cabangStats.length - 1];
+    insights.push(
+      `Cabang dengan portofolio paling kecil: ${bottom.label} (${formatRpCompact(
+        bottom.value
+      )}, ${bottom.count.toLocaleString("id-ID")} kontrak).`
+    );
+  }
+
+  if (insights.length === 0) return null;
+
+  return (
+    <DashboardCard title="Insight" icon={Lightbulb} accent="#8B5CF6">
+      <ul className="space-y-2.5">
+        {insights.map((text, i) => (
+          <li key={i} className="flex gap-2 text-xs leading-relaxed">
+            <span
+              className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+              style={{ backgroundColor: "#8B5CF6" }}
+            />
+            <span className="text-[#12233D]/80">{text}</span>
+          </li>
+        ))}
+      </ul>
+    </DashboardCard>
+  );
+}
+
 function Dashboard({ records, activity, onFilter }) {
   const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
 
@@ -1308,17 +1534,26 @@ function Dashboard({ records, activity, onFilter }) {
       }));
   }, [records]);
 
-  const cabangOutstanding = useMemo(() => {
+  const cabangStats = useMemo(() => {
     const map = {};
     records.forEach((r) => {
       if (!r.cabang) return;
-      map[r.cabang] = (map[r.cabang] || 0) + (Number(r.balPrin) || 0);
+      if (!map[r.cabang]) map[r.cabang] = { value: 0, count: 0, high: 0 };
+      map[r.cabang].value += Number(r.balPrin) || 0;
+      map[r.cabang].count += 1;
+      if (String(r.matriks || "").toUpperCase().trim() === "HIGH") {
+        map[r.cabang].high += 1;
+      }
     });
     return Object.entries(map)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
+      .map(([label, v]) => ({ label, ...v }))
+      .sort((a, b) => b.value - a.value);
   }, [records]);
+
+  const cabangOutstanding = useMemo(
+    () => cabangStats.slice(0, 10),
+    [cabangStats]
+  );
 
   const recoCount = useMemo(() => {
     const map = {};
@@ -1351,6 +1586,14 @@ function Dashboard({ records, activity, onFilter }) {
   const avgOutstanding = records.length
     ? totalOutstanding / records.length
     : 0;
+
+  const highCount = useMemo(
+    () =>
+      records.filter(
+        (r) => String(r.matriks || "").toUpperCase().trim() === "HIGH"
+      ).length,
+    [records]
+  );
 
   const maxStatus = Math.max(1, ...statusData.map((d) => d.value));
   const maxMatriks = Math.max(1, ...matriksData.map((d) => d.value));
@@ -1396,6 +1639,16 @@ function Dashboard({ records, activity, onFilter }) {
       >
         <DonutChart data={statusData} total={records.length} />
       </DashboardCard>
+
+      <MapCard cabangStats={cabangStats} onFilter={onFilter} />
+
+      <InsightCard
+        records={records}
+        activity={activity}
+        cabangStats={cabangStats}
+        recoCount={recoCount}
+        highCount={highCount}
+      />
 
       <DashboardCard title="Status Collection" icon={ListChecks} accent="#2A6FB0">
         {statusData.map((d) => (
