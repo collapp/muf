@@ -229,21 +229,59 @@ function formatDateTime(v) {
 }
 
 function shareToWhatsApp(r, getStatus) {
-  const lastNote = (r.notes || []).slice().sort((a, b) => b.id - a.id)[0];
+  const notesSorted = (r.notes || []).slice().sort((a, b) => b.id - a.id);
+  const lastNote = notesSorted[0];
+
+  const val = (v) => (v === undefined || v === null || v === "" ? "-" : v);
+
   const lines = [
-    `*${r.konsumen || "-"}*`,
-    `No Kontrak: ${r.noKontrak || "-"}`,
-    `Cabang: ${r.cabang || "-"}`,
+    `*${val(r.konsumen)}*`,
+    `No Kontrak: ${val(r.noKontrak)}`,
+    `Cabang: ${val(r.cabang)}`,
+    "",
+    "*KENDARAAN*",
+    `Merk/Tipe: ${val(r.merk)} ${val(r.tipe)} (${val(r.tahun)})`,
+    `No Polisi: ${val(r.noPolisi)}`,
+    `No Mesin: ${val(r.noMesin)}`,
+    `No Rangka: ${val(r.noRangka)}`,
+    `Nama BPKB: ${val(r.namaBpkb)}`,
+    `Warna Kendaraan: ${val(r.warnaKendaraan)}`,
+    "",
+    "*KEUANGAN*",
     `Sisa Hutang: ${formatRp(r.balPrin)}`,
-    `Kendaraan: ${r.merk || ""} ${r.tipe || ""} (${r.tahun || "-"})`,
-    `No Polisi: ${r.noPolisi || "-"}`,
-    `No HP: ${r.noHp || "-"}`,
-    `Alamat: ${r.alamat || "-"}`,
+    `Tenor: ${val(r.tenor)} bln`,
+    `Sisa Tenor: ${val(r.sisaTenor)}`,
+    `Angsuran Ke: ${val(r.ke)}`,
+    `Tgl WO: ${formatDate(r.tglWO)}`,
+    `Tanggal Jatuh Tempo: ${formatDate(r.tanggalJT)}`,
+    `Hari Tunggakan: ${val(r.hariTunggakan)}`,
+    `Matriks Risiko: ${val(r.matriks)}`,
+    `Deliquency: ${val(r.deliquency)}`,
+    "",
+    "*KONTAK & ALAMAT*",
+    `No HP: ${val(r.noHp)}`,
+    `Pekerjaan: ${val(r.pekerjaan)}`,
+    `Dealer: ${val(r.dealer)}`,
+    `Kecamatan: ${val(r.kecamatan)}`,
+    `Alamat: ${val(r.alamat)}`,
+    `Alamat KTP: ${val(r.alamatKtp)}`,
+    `Alamat Tagih: ${val(r.alamatTagih)}`,
+    "",
+    "*COLLECTION*",
+    `Collector: ${val(r.collector)}`,
+    `Recovery Head: ${val(r.recoveryHead)}`,
+    `Status Debitur: ${val(r.statusDebitur)}`,
+    `Status Rumah: ${val(r.statusRumah)}`,
     `Status Collection: ${statusInfo(getStatus(r)).label}`,
   ];
+
+  if (r.kronologis) {
+    lines.push(`Kronologis: ${r.kronologis}`);
+  }
   if (lastNote) {
     lines.push(`Catatan Terakhir: ${lastNote.text}`);
   }
+
   const text = encodeURIComponent(lines.join("\n"));
   window.open(`https://wa.me/?text=${text}`, "_blank");
 }
