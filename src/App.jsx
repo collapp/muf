@@ -464,10 +464,10 @@ function MainApp({ user, onLogout }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0c1930] sm:py-6">
-      <div className="max-w-[480px] mx-auto bg-[#F4F5F7] text-[#12233D] font-sans pb-10 min-h-screen sm:min-h-0 sm:rounded-2xl sm:shadow-2xl sm:overflow-hidden">
+    <div className="min-h-screen bg-[#F4F5F7] text-[#12233D] font-sans pb-10">
       {/* header */}
-      <div className="bg-[#12233D] text-white px-4 pt-6 pb-5 sticky top-0 z-20 shadow-md">
+      <div className="bg-[#12233D] text-white px-4 sm:px-6 pt-6 pb-5 sticky top-0 z-20 shadow-md">
+        <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-[#C98A2C] font-semibold">
@@ -524,7 +524,7 @@ function MainApp({ user, onLogout }) {
         </div>
 
         {records.length > 0 && (
-          <div className="grid grid-cols-2 gap-2 mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
             <div className="bg-white/10 rounded-lg px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide text-white/60">
                 Total Kontrak
@@ -533,7 +533,7 @@ function MainApp({ user, onLogout }) {
                 {records.length.toLocaleString("id-ID")}
               </p>
             </div>
-            <div className="bg-white/10 rounded-lg px-3 py-2">
+            <div className="bg-white/10 rounded-lg px-3 py-2 sm:col-span-2">
               <p className="text-[10px] uppercase tracking-wide text-white/60">
                 Total Sisa Hutang
               </p>
@@ -570,7 +570,10 @@ function MainApp({ user, onLogout }) {
             Gagal terhubung ke database: {dbError}
           </p>
         )}
+        </div>
       </div>
+
+      <div className="max-w-7xl mx-auto">
 
       {uploading && (
         <div className="px-4 pt-3 text-sm text-[#12233D]/70 flex items-center gap-2">
@@ -850,7 +853,7 @@ function MainApp({ user, onLogout }) {
                       </p>
                     </div>
                     <span className="text-[11px] font-mono font-bold shrink-0">
-                      {formatRpCompact(r.balPrin)}
+                      {formatRp(r.balPrin)}
                     </span>
                   </button>
                 );
@@ -882,7 +885,7 @@ function MainApp({ user, onLogout }) {
                       {r.cabang}
                     </p>
                     <p className="text-xs font-mono font-bold mt-1.5">
-                      {formatRpCompact(r.balPrin)}
+                      {formatRp(r.balPrin)}
                     </p>
                     <span
                       className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mt-1.5"
@@ -1244,6 +1247,7 @@ function MainApp({ user, onLogout }) {
       <p className="text-center text-[10px] text-[#12233D]/30 py-4">
         © SRISP 2026
       </p>
+      </div>
 
       {showSettings && (
         <AccountSettings
@@ -1251,7 +1255,6 @@ function MainApp({ user, onLogout }) {
           onClose={() => setShowSettings(false)}
         />
       )}
-      </div>
     </div>
   );
 }
@@ -1699,7 +1702,7 @@ function InsightCard({ records, cabangStats, recoCount, highCount }) {
     insights.push(
       `Cabang ${top.label} menyumbang ${share.toFixed(
         0
-      )}% dari total sisa hutang (${formatRpCompact(
+      )}% dari total sisa hutang (${formatRp(
         top.value
       )}) — konsentrasi risiko terbesar ada di sini.`
     );
@@ -1742,7 +1745,7 @@ function InsightCard({ records, cabangStats, recoCount, highCount }) {
   if (cabangStats.length > 1) {
     const bottom = cabangStats[cabangStats.length - 1];
     insights.push(
-      `Cabang dengan portofolio paling kecil: ${bottom.label} (${formatRpCompact(
+      `Cabang dengan portofolio paling kecil: ${bottom.label} (${formatRp(
         bottom.value
       )}, ${bottom.count.toLocaleString("id-ID")} kontrak).`
     );
@@ -1869,13 +1872,12 @@ function Dashboard({ records, onFilter }) {
   const maxReco = Math.max(1, ...recoCount.map((d) => d.value));
 
   return (
-    <div className="px-4 mt-4 space-y-3 pb-6">
+    <div className="px-4 sm:px-6 mt-4 pb-6">
       {/* colorful KPI cards */}
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <KpiCard
           label="Total Sisa Hutang"
-          value={formatRpCompact(totalOutstanding)}
-          sub={formatRp(totalOutstanding)}
+          value={formatRp(totalOutstanding)}
           icon={Wallet}
           gradient={["#2E6BE6", "#1B3FAE"]}
         />
@@ -1888,18 +1890,19 @@ function Dashboard({ records, onFilter }) {
         <KpiCard
           label="Lunas / Selesai"
           value={lunasStats.count.toLocaleString("id-ID")}
-          sub={formatRpCompact(lunasStats.value)}
+          sub={formatRp(lunasStats.value)}
           icon={CheckCircle2}
           gradient={["#22B573", "#0E8A56"]}
         />
         <KpiCard
           label="Rata-rata / Kontrak"
-          value={formatRpCompact(avgOutstanding)}
+          value={formatRp(avgOutstanding)}
           icon={TrendingUp}
           gradient={["#F0932F", "#D9702E"]}
         />
       </div>
 
+      <div className="mt-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 space-y-3">
       <DashboardCard
         title="Proporsi Status Collection"
         icon={PieChart}
@@ -1908,14 +1911,18 @@ function Dashboard({ records, onFilter }) {
         <DonutChart data={statusData} total={records.length} />
       </DashboardCard>
 
-      <MapCard cabangStats={cabangStats} onFilter={onFilter} />
+      <div className="lg:col-span-2">
+        <MapCard cabangStats={cabangStats} onFilter={onFilter} />
+      </div>
 
+      <div className="lg:col-span-2">
       <InsightCard
         records={records}
         cabangStats={cabangStats}
         recoCount={recoCount}
         highCount={highCount}
       />
+      </div>
 
       <DashboardCard title="Status Collection" icon={ListChecks} accent="#2A6FB0">
         {statusData.map((d) => (
@@ -1953,6 +1960,7 @@ function Dashboard({ records, onFilter }) {
       )}
 
       {cabangOutstanding.length > 0 && (
+        <div className="lg:col-span-2">
         <DashboardCard
           title="Top 10 Cabang — Sisa Hutang"
           icon={Building2}
@@ -1965,16 +1973,18 @@ function Dashboard({ records, onFilter }) {
               value={d.value}
               max={maxCabang}
               color="#C98A2C"
-              formatValue={formatRpCompact}
+              formatValue={formatRp}
               rank={i + 1}
               highlight={i === 0}
               onClick={() => onFilter("cabang", d.label)}
             />
           ))}
         </DashboardCard>
+        </div>
       )}
 
       {recoCount.length > 0 && (
+        <div className="lg:col-span-2">
         <DashboardCard
           title="Top 10 Recovery Head — Jumlah Kontrak"
           icon={Trophy}
@@ -1993,7 +2003,9 @@ function Dashboard({ records, onFilter }) {
             />
           ))}
         </DashboardCard>
+        </div>
       )}
+      </div>
     </div>
   );
 }
@@ -2130,58 +2142,6 @@ function AccountSettings({ user, onClose }) {
   );
 }
 
-const INDONESIA_REGIONS = [
-  { name: "Sumatera", cx: 13, cy: 34, rx: 8, ry: 21, rotate: -18 },
-  { name: "Jawa", cx: 31, cy: 67, rx: 15, ry: 3.4, rotate: -4 },
-  { name: "Kalimantan", cx: 43, cy: 31, rx: 12.5, ry: 15 },
-  { name: "Sulawesi", cx: 59, cy: 34, rx: 5.5, ry: 12, rotate: 20 },
-  { name: "Bali & Nusa Tenggara", cx: 52, cy: 71, rx: 17, ry: 2.6 },
-  { name: "Maluku", cx: 71, cy: 44, rx: 6, ry: 8.5, rotate: 25 },
-  { name: "Papua", cx: 89, cy: 37, rx: 14.5, ry: 16, rotate: -12 },
-];
-
-function IndonesiaMapBackground({ activeRegion, onPick }) {
-  return (
-    <svg
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      className="absolute inset-0 w-full h-full"
-    >
-      <defs>
-        <linearGradient id="idLandGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#2A4A6B" />
-          <stop offset="100%" stopColor="#1B324C" />
-        </linearGradient>
-        <filter id="idLandGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow
-            dx="0"
-            dy="0"
-            stdDeviation="0.8"
-            floodColor="#C98A2C"
-            floodOpacity="0.35"
-          />
-        </filter>
-      </defs>
-      {INDONESIA_REGIONS.map((r) => (
-        <ellipse
-          key={r.name}
-          cx={r.cx}
-          cy={r.cy}
-          rx={r.rx}
-          ry={r.ry}
-          transform={r.rotate ? `rotate(${r.rotate} ${r.cx} ${r.cy})` : undefined}
-          fill={activeRegion?.name === r.name ? "#C98A2C" : "url(#idLandGrad)"}
-          stroke={activeRegion?.name === r.name ? "#E3A94A" : "#3A5A7D"}
-          strokeWidth="0.35"
-          filter={activeRegion?.name === r.name ? "url(#idLandGlow)" : undefined}
-          className="cursor-pointer transition-colors duration-300"
-          onClick={() => onPick(r)}
-        />
-      ))}
-    </svg>
-  );
-}
-
 function LoginClock() {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -2210,7 +2170,7 @@ function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeRegion, setActiveRegion] = useState(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -2226,22 +2186,10 @@ function LoginScreen() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#0c1930] to-[#16294a]">
-      <IndonesiaMapBackground
-        activeRegion={activeRegion}
-        onPick={setActiveRegion}
-      />
-
-      {activeRegion && (
-        <div
-          className="absolute z-10 -translate-x-1/2 -translate-y-full pointer-events-none"
-          style={{ left: `${activeRegion.cx}%`, top: `${activeRegion.cy}%` }}
-        >
-          <div className="bg-[#12233D] text-white text-xs font-semibold px-2.5 py-1 rounded-lg shadow-lg mb-1 whitespace-nowrap">
-            {activeRegion.name}
-          </div>
-        </div>
-      )}
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0c1930] via-[#16294a] to-[#0c1930]">
+      {/* soft decorative glow, no map */}
+      <div className="absolute -top-24 -left-24 w-96 h-96 bg-[#C98A2C]/10 rounded-full blur-3xl" />
+      <div className="absolute -bottom-32 -right-24 w-96 h-96 bg-[#2A6FB0]/10 rounded-full blur-3xl" />
 
       {/* brand, top-left */}
       <div className="absolute top-4 left-4 z-10">
@@ -2251,61 +2199,82 @@ function LoginScreen() {
         <p className="text-xs text-white/50 mt-0.5">Portofolio Write Off</p>
       </div>
 
-      {/* clock, top-center-ish */}
-      <div className="absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-10 px-4">
-        <LoginClock />
+      {/* small Masuk button, top-right */}
+      <div className="absolute top-4 right-4 z-20">
+        {!panelOpen && (
+          <button
+            onClick={() => setPanelOpen(true)}
+            className="flex items-center gap-1.5 bg-[#C98A2C] hover:bg-[#B67923] text-[#12233D] font-semibold text-xs px-3.5 py-2 rounded-lg shadow-lg transition-colors"
+          >
+            <Lock size={13} /> Masuk
+          </button>
+        )}
+
+        {panelOpen && (
+          <form
+            onSubmit={handleSubmit}
+            className="bg-white/95 backdrop-blur rounded-xl p-3.5 shadow-2xl space-y-2.5 w-56 sm:w-64"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-[#12233D] flex items-center gap-1">
+                <Lock size={12} /> Masuk
+              </p>
+              <button
+                type="button"
+                onClick={() => setPanelOpen(false)}
+                className="text-[#12233D]/40"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="relative">
+              <Mail
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#12233D]/30"
+              />
+              <input
+                type="email"
+                required
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-md pl-7 pr-2 py-1.5 text-xs outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+            <div className="relative">
+              <Lock
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#12233D]/30"
+              />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-md pl-7 pr-2 py-1.5 text-xs outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+            {error && (
+              <p className="text-[10px] text-[#B23A2E] bg-[#B23A2E]/10 rounded-md px-2 py-1.5 leading-snug">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#12233D] text-white font-semibold text-xs py-2 rounded-md disabled:opacity-50"
+            >
+              {loading ? "Memproses…" : "Masuk"}
+            </button>
+          </form>
+        )}
       </div>
 
-      {/* compact login form, top-right */}
-      <div className="absolute top-4 right-4 z-20 w-56 sm:w-64">
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white/95 backdrop-blur rounded-xl p-3.5 shadow-2xl space-y-2.5"
-        >
-          <p className="text-[11px] font-bold text-[#12233D] flex items-center gap-1">
-            <Lock size={12} /> Masuk
-          </p>
-          <div className="relative">
-            <Mail
-              size={13}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#12233D]/30"
-            />
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-md pl-7 pr-2 py-1.5 text-xs outline-none focus:border-[#C98A2C]"
-            />
-          </div>
-          <div className="relative">
-            <Lock
-              size={13}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#12233D]/30"
-            />
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-md pl-7 pr-2 py-1.5 text-xs outline-none focus:border-[#C98A2C]"
-            />
-          </div>
-          {error && (
-            <p className="text-[10px] text-[#B23A2E] bg-[#B23A2E]/10 rounded-md px-2 py-1.5 leading-snug">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#12233D] text-white font-semibold text-xs py-2 rounded-md disabled:opacity-50"
-          >
-            {loading ? "Memproses…" : "Masuk"}
-          </button>
-        </form>
+      {/* clock, centered */}
+      <div className="absolute inset-0 flex items-center justify-center z-0 px-4">
+        <LoginClock />
       </div>
 
       <p className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 text-[10px] text-white/30">
