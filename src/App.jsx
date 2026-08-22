@@ -43,6 +43,7 @@ import {
   Settings,
   KeyRound,
   Clock,
+  MessageCircle,
 } from "lucide-react";
 import { auth } from "./firebase";
 import {
@@ -189,13 +190,62 @@ function formatRpCompact(n) {
 }
 function formatDate(v) {
   if (!v) return "-";
-  const d = v instanceof Date ? v : new Date(v);
-  if (isNaN(d.getTime())) return String(v);
+  let d;
+  if (typeof v?.toDate === "function") {
+    d = v.toDate(); // Firestore Timestamp
+  } else if (typeof v?.seconds === "number") {
+    d = new Date(v.seconds * 1000); // plain {seconds,nanoseconds} object
+  } else {
+    d = v instanceof Date ? v : new Date(v);
+  }
+  if (isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
+}
+
+function formatDateTime(v) {
+  if (!v) return "-";
+  let d;
+  if (typeof v?.toDate === "function") {
+    d = v.toDate();
+  } else if (typeof v?.seconds === "number") {
+    d = new Date(v.seconds * 1000);
+  } else {
+    d = v instanceof Date ? v : new Date(v);
+  }
+  if (isNaN(d.getTime())) return "-";
+  return (
+    d.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }) +
+    " " +
+    d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+  );
+}
+
+function shareToWhatsApp(r, getStatus) {
+  const lastNote = (r.notes || []).slice().sort((a, b) => b.id - a.id)[0];
+  const lines = [
+    `*${r.konsumen || "-"}*`,
+    `No Kontrak: ${r.noKontrak || "-"}`,
+    `Cabang: ${r.cabang || "-"}`,
+    `Sisa Hutang: ${formatRp(r.balPrin)}`,
+    `Kendaraan: ${r.merk || ""} ${r.tipe || ""} (${r.tahun || "-"})`,
+    `No Polisi: ${r.noPolisi || "-"}`,
+    `No HP: ${r.noHp || "-"}`,
+    `Alamat: ${r.alamat || "-"}`,
+    `Status Collection: ${statusInfo(getStatus(r)).label}`,
+  ];
+  if (lastNote) {
+    lines.push(`Catatan Terakhir: ${lastNote.text}`);
+  }
+  const text = encodeURIComponent(lines.join("\n"));
+  window.open(`https://wa.me/?text=${text}`, "_blank");
 }
 
 // ---------- parsing ----------
@@ -1232,11 +1282,7 @@ function MainApp({ user, onLogout }) {
                 <Fact
                   icon={Calendar}
                   label="Tanggal Jatuh Tempo"
-                  value={
-                    selected.tanggalJT && selected.tanggalJT !== "00:00:00"
-                      ? String(selected.tanggalJT)
-                      : "-"
-                  }
+                  value={formatDate(selected.tanggalJT)}
                 />
                 <Fact label="Deliquency" value={selected.deliquency} />
                 {selected.kronologis && (
@@ -1311,6 +1357,13 @@ function MainApp({ user, onLogout }) {
                   ))}
                 </div>
               </div>
+
+              <button
+                onClick={() => shareToWhatsApp(selected, getStatus)}
+                className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold text-sm py-2.5 rounded-lg"
+              >
+                <MessageCircle size={16} /> Kirim ke WhatsApp
+              </button>
             </div>
           </div>
         </div>
