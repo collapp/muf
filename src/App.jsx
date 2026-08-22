@@ -278,6 +278,7 @@ function MainApp({ user, onLogout }) {
   const [selectedId, setSelectedId] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [warnaDraft, setWarnaDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState("belum_dihubungi");
   const fileInput = useRef(null);
 
   // real-time subscriptions — records stay in sync across every device
@@ -466,18 +467,18 @@ function MainApp({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-[#F4F5F7] text-[#12233D] font-sans pb-10">
       {/* header */}
-      <div className="bg-[#12233D] text-white px-4 sm:px-6 pt-6 pb-5 sticky top-0 z-20 shadow-md">
+      <div className="bg-[#12233D] text-white px-4 sm:px-6 pt-3.5 pb-3 sticky top-0 z-20 shadow-md">
         <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-[#C98A2C] font-semibold">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[#C98A2C] font-semibold">
               Collection Tracker
             </p>
-            <h1 className="text-lg font-bold leading-tight mt-0.5">
+            <h1 className="text-sm font-bold leading-tight mt-0.5">
               Portofolio Write Off
             </h1>
             {user?.email && (
-              <p className="text-[10px] text-white/40 mt-0.5 truncate max-w-[160px]">
+              <p className="text-[9px] text-white/40 mt-0.5 truncate max-w-[160px]">
                 {user.email}
               </p>
             )}
@@ -487,31 +488,31 @@ function MainApp({ user, onLogout }) {
               <button
                 onClick={exportBackup}
                 title="Backup ke Excel"
-                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2.5 py-2 rounded-lg transition-colors"
+                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2 py-1.5 rounded-lg transition-colors"
               >
-                <Download size={16} />
+                <Download size={14} />
               </button>
             )}
             <button
               onClick={() => fileInput.current?.click()}
-              className="flex items-center gap-1.5 bg-[#C98A2C] hover:bg-[#B67923] text-[#12233D] font-semibold text-sm px-3 py-2 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 bg-[#C98A2C] hover:bg-[#B67923] text-[#12233D] font-semibold text-xs px-2.5 py-1.5 rounded-lg transition-colors"
             >
-              <Upload size={16} />
+              <Upload size={14} />
               {records.length ? "Ganti" : "Upload"}
             </button>
             <button
               onClick={() => setShowSettings(true)}
               title="Pengaturan Akun"
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2.5 py-2 rounded-lg transition-colors"
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2 py-1.5 rounded-lg transition-colors"
             >
-              <Settings size={16} />
+              <Settings size={14} />
             </button>
             <button
               onClick={onLogout}
               title="Keluar"
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2.5 py-2 rounded-lg transition-colors"
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2 py-1.5 rounded-lg transition-colors"
             >
-              <LogOut size={16} />
+              <LogOut size={14} />
             </button>
           </div>
           <input
@@ -524,20 +525,20 @@ function MainApp({ user, onLogout }) {
         </div>
 
         {records.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-            <div className="bg-white/10 rounded-lg px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wide text-white/60">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2.5">
+            <div className="bg-white/10 rounded-lg px-2.5 py-1.5">
+              <p className="text-[9px] uppercase tracking-wide text-white/60">
                 Total Kontrak
               </p>
-              <p className="text-xl font-mono font-bold tabular-nums">
+              <p className="text-base font-mono font-bold tabular-nums">
                 {records.length.toLocaleString("id-ID")}
               </p>
             </div>
-            <div className="bg-white/10 rounded-lg px-3 py-2 sm:col-span-2">
-              <p className="text-[10px] uppercase tracking-wide text-white/60">
+            <div className="bg-white/10 rounded-lg px-2.5 py-1.5 sm:col-span-2">
+              <p className="text-[9px] uppercase tracking-wide text-white/60">
                 Total Sisa Hutang
               </p>
-              <p className="text-base font-mono font-bold tabular-nums truncate">
+              <p className="text-sm font-mono font-bold tabular-nums truncate">
                 {formatRp(totalOutstanding)}
               </p>
             </div>
@@ -545,8 +546,8 @@ function MainApp({ user, onLogout }) {
         )}
 
         {records.length > 0 && !dbError && (
-          <p className="flex items-center gap-1 text-[10px] text-white/40 mt-2.5">
-            <Save size={11} />
+          <p className="flex items-center gap-1 text-[9px] text-white/40 mt-2">
+            <Save size={10} />
             Tersambung ke database tim (real-time)
             {lastSavedAt && (
               <span className="text-[#5CC98A]">
@@ -565,8 +566,8 @@ function MainApp({ user, onLogout }) {
           </p>
         )}
         {dbError && (
-          <p className="flex items-center gap-1 text-[10px] text-[#F0932F] mt-2.5">
-            <AlertCircle size={11} />
+          <p className="flex items-center gap-1 text-[9px] text-[#F0932F] mt-2">
+            <AlertCircle size={10} />
             Gagal terhubung ke database: {dbError}
           </p>
         )}
@@ -686,6 +687,7 @@ function MainApp({ user, onLogout }) {
                 onClick={() => {
                   setSelectedId(r._id);
                   setWarnaDraft(r.warnaKendaraan || "");
+                    setStatusDraft(r.status || "belum_dihubungi");
                 }}
                 className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] opacity-75"
                 style={{ borderLeft: `4px solid ${st.color}` }}
@@ -837,6 +839,7 @@ function MainApp({ user, onLogout }) {
                     onClick={() => {
                       setSelectedId(r._id);
                       setWarnaDraft(r.warnaKendaraan || "");
+                    setStatusDraft(r.status || "belum_dihubungi");
                     }}
                     className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 active:bg-[#12233D]/[0.03]"
                   >
@@ -874,6 +877,7 @@ function MainApp({ user, onLogout }) {
                     onClick={() => {
                       setSelectedId(r._id);
                       setWarnaDraft(r.warnaKendaraan || "");
+                    setStatusDraft(r.status || "belum_dihubungi");
                     }}
                     className="text-left bg-white rounded-xl p-2.5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] active:scale-[0.98] transition-transform"
                     style={{ borderTop: `3px solid ${st.color}` }}
@@ -915,6 +919,7 @@ function MainApp({ user, onLogout }) {
                   onClick={() => {
                     setSelectedId(r._id);
                     setWarnaDraft(r.warnaKendaraan || "");
+                    setStatusDraft(r.status || "belum_dihubungi");
                   }}
                   className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] active:scale-[0.99] transition-transform"
                   style={{ borderLeft: `4px solid ${st.color}` }}
@@ -1017,11 +1022,11 @@ function MainApp({ user, onLogout }) {
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {STATUS_OPTIONS.map((s) => {
-                    const active = getStatus(selected) === s.key;
+                    const active = statusDraft === s.key;
                     return (
                       <button
                         key={s.key}
-                        onClick={() => setContractStatus(selected._id, s.key)}
+                        onClick={() => setStatusDraft(s.key)}
                         className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors"
                         style={
                           active
@@ -1042,6 +1047,51 @@ function MainApp({ user, onLogout }) {
                     );
                   })}
                 </div>
+                {statusDraft !== getStatus(selected) && (
+                  <button
+                    onClick={() => setContractStatus(selected._id, statusDraft)}
+                    className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold bg-[#12233D] text-white py-2 rounded-lg"
+                  >
+                    <Save size={13} /> Simpan Perubahan Status
+                  </button>
+                )}
+
+                {(selected.statusHistory || []).length > 0 && (
+                  <div className="mt-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-[#12233D]/40 font-semibold mb-1">
+                      Riwayat Perubahan Status
+                    </p>
+                    <div className="space-y-1 max-h-28 overflow-y-auto">
+                      {selected.statusHistory
+                        .slice()
+                        .reverse()
+                        .map((h, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between text-[11px] bg-white rounded-md px-2 py-1 border border-[#12233D]/5"
+                          >
+                            <span
+                              className="font-semibold"
+                              style={{ color: statusInfo(h.status).color }}
+                            >
+                              {statusInfo(h.status).label}
+                            </span>
+                            <span className="text-[#12233D]/40 font-mono">
+                              {new Date(h.ts).toLocaleDateString("id-ID", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })}{" "}
+                              {new Date(h.ts).toLocaleTimeString("id-ID", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* key facts */}
@@ -1575,7 +1625,7 @@ function MapCard({ cabangStats, onFilter }) {
       {available ? (
         <div
           ref={containerRef}
-          className="w-full h-56 sm:h-64 rounded-xl overflow-hidden"
+          className="w-full h-56 sm:h-64 rounded-xl overflow-hidden isolate relative z-0"
         />
       ) : (
         <p className="text-xs text-[#12233D]/50 py-8 text-center">
@@ -1676,6 +1726,20 @@ function InsightCard({ records, cabangStats, recoCount, highCount }) {
 
 function Dashboard({ records, onFilter }) {
   const getStatus = (r) => r?.status || "belum_dihubungi";
+  const [selectedReco, setSelectedReco] = useState(null);
+
+  const recoDetail = useMemo(() => {
+    if (!selectedReco) return null;
+    const list = records.filter((r) => r.recoveryHead === selectedReco);
+    const count = list.length;
+    const total = list.reduce((s, r) => s + (Number(r.balPrin) || 0), 0);
+    const biggest = list.reduce(
+      (max, r) =>
+        (Number(r.balPrin) || 0) > (Number(max?.balPrin) || 0) ? r : max,
+      null
+    );
+    return { count, total, biggest };
+  }, [selectedReco, records]);
 
   const statusData = useMemo(() => {
     const counts = {};
@@ -1894,6 +1958,55 @@ function Dashboard({ records, onFilter }) {
           icon={Trophy}
           accent="#2A6FB0"
         >
+          {recoDetail && (
+            <div className="mb-3 bg-[#2A6FB0]/[0.06] rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-bold text-[#12233D]">
+                  {selectedReco}
+                </p>
+                <button onClick={() => setSelectedReco(null)}>
+                  <X size={14} className="text-[#12233D]/40" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-[10px] text-[#12233D]/40 uppercase">
+                    Jumlah Kontrak
+                  </p>
+                  <p className="font-mono font-bold">
+                    {recoDetail.count.toLocaleString("id-ID")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#12233D]/40 uppercase">
+                    Total Hutang
+                  </p>
+                  <p className="font-mono font-bold">
+                    {formatRp(recoDetail.total)}
+                  </p>
+                </div>
+                {recoDetail.biggest && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-[#12233D]/40 uppercase">
+                      Kontrak Hutang Terbesar
+                    </p>
+                    <p className="font-semibold">
+                      {recoDetail.biggest.konsumen} —{" "}
+                      <span className="font-mono">
+                        {formatRp(recoDetail.biggest.balPrin)}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => onFilter("reco", selectedReco)}
+                className="mt-2.5 w-full text-xs font-semibold bg-[#12233D] text-white py-1.5 rounded-lg"
+              >
+                Lihat Daftar
+              </button>
+            </div>
+          )}
           {recoCount.map((d, i) => (
             <BarRow
               key={d.label}
@@ -1902,8 +2015,10 @@ function Dashboard({ records, onFilter }) {
               max={maxReco}
               color="#2A6FB0"
               rank={i + 1}
-              highlight={i === 0}
-              onClick={() => onFilter("reco", d.label)}
+              highlight={i === 0 || d.label === selectedReco}
+              onClick={() =>
+                setSelectedReco(d.label === selectedReco ? null : d.label)
+              }
             />
           ))}
         </DashboardCard>
