@@ -1505,25 +1505,10 @@ function findCoords(cabangName) {
   return null;
 }
 
-// Bounding box used to project lat/long into a flat panel (Sumbagut region)
-const MAP_BOUNDS = { latMin: 0, latMax: 6.2, lngMin: 94.8, lngMax: 105 };
-
-function projectToPercent([lat, lng]) {
-  const x =
-    ((lng - MAP_BOUNDS.lngMin) / (MAP_BOUNDS.lngMax - MAP_BOUNDS.lngMin)) *
-    100;
-  const y =
-    100 -
-    ((lat - MAP_BOUNDS.latMin) / (MAP_BOUNDS.latMax - MAP_BOUNDS.latMin)) *
-      100;
-  return {
-    x: Math.min(96, Math.max(4, x)),
-    y: Math.min(94, Math.max(6, y)),
-  };
-}
-
 function MapCard({ cabangStats, onFilter }) {
-  const [activePin, setActivePin] = useState(null);
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const [available] = useState(typeof window !== "undefined" && !!window.L);
 
   const placed = useMemo(() => {
     return cabangStats
@@ -1531,156 +1516,75 @@ function MapCard({ cabangStats, onFilter }) {
       .filter((c) => c.coords);
   }, [cabangStats]);
 
-  const maxVal = Math.max(1, ...placed.map((c) => c.value));
+  useEffect(() => {
+    if (!available || !containerRef.current || mapRef.current) return;
+    const L = window.L;
+    const map = L.map(containerRef.current, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([2.5, 99.5], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap",
+      maxZoom: 12,
+    }).addTo(map);
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [available]);
+
+  useEffect(() => {
+    if (!mapRef.current || !window.L) return;
+    const L = window.L;
+    const map = mapRef.current;
+    const markers = [];
+    const maxVal = Math.max(1, ...placed.map((c) => c.value));
+
+    placed.forEach((c) => {
+      const size = Math.round(14 + (c.value / maxVal) * 20);
+      const icon = L.divIcon({
+        html: `
+          <div style="position:relative;width:${size}px;height:${size}px;">
+            <span class="animate-ping" style="position:absolute;inset:0;border-radius:9999px;background:#C98A2C;opacity:0.4;"></span>
+            <span style="position:absolute;inset:0;border-radius:9999px;background:#C98A2C;border:2px solid white;box-shadow:0 2px 6px rgba(18,35,61,0.4);"></span>
+          </div>`,
+        className: "",
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+      });
+      const marker = L.marker(c.coords, { icon }).addTo(map);
+      marker.bindPopup(
+        `<div style="font-family:sans-serif;min-width:150px">
+          <b>${c.label}</b><br/>
+          ${c.count.toLocaleString("id-ID")} kontrak<br/>
+          ${formatRp(c.value)}
+        </div>`
+      );
+      marker.on("click", () => onFilter("cabang", c.label));
+      markers.push(marker);
+    });
+
+    return () => {
+      markers.forEach((m) => map.removeLayer(m));
+    };
+  }, [placed]);
 
   return (
     <DashboardCard title="Peta Sebaran Cabang" icon={MapPin} accent="#C98A2C">
-      <div
-        className="relative w-full rounded-xl overflow-hidden"
-        style={{
-          aspectRatio: "4 / 3",
-          background:
-            "radial-gradient(120% 100% at 20% 0%, #EAF4FC 0%, #CFE6F5 55%, #B9D9EE 100%)",
-        }}
-      >
-        {/* illustrative landmass (approximate northern Sumatra / Sumbagut),
-            not a real geographic map — decorative backdrop for the pins,
-            using the same lat/long → % projection as the markers below */}
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          className="absolute inset-0 w-full h-full"
-        >
-          <defs>
-            <linearGradient id="landGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#E7F0DE" />
-              <stop offset="100%" stopColor="#C7DBBC" />
-            </linearGradient>
-            <filter id="landShadow" x="-30%" y="-30%" width="160%" height="160%">
-              <feDropShadow
-                dx="0"
-                dy="0.6"
-                stdDeviation="1"
-                floodColor="#12233D"
-                floodOpacity="0.25"
-              />
-            </filter>
-          </defs>
-
-          {/* faint wave texture on the water */}
-          <g stroke="#FFFFFF" strokeOpacity="0.35" fill="none" strokeWidth="0.5">
-            <path d="M 75,10 Q 82,13 90,10" />
-            <path d="M 5,55 Q 12,58 19,55" />
-            <path d="M 80,45 Q 87,48 94,45" />
-            <path d="M 10,85 Q 17,88 24,85" />
-          </g>
-
-          <path
-            filter="url(#landShadow)"
-            fill="url(#landGrad)"
-            stroke="#A9C29C"
-            strokeWidth="0.4"
-            d="M 3.9,4.8
-               C 10,3 18,6 22.5,11.3
-               C 27,15.5 29,21 31.4,27.4
-               C 34.5,34.5 36,39 38.2,41.9
-               C 48,50 56,55 60.8,59.7
-               C 64,64 66,68.5 65.7,72.6
-               C 68,76.5 71.8,78.5 71.6,80.6
-               C 72.5,85 71,89.5 69.6,91.9
-               C 62,95.5 53,96.5 46.1,95.2
-               C 43,88.5 41,81 39.2,72.6
-               C 36,63 30.5,52.5 25,45
-               C 20,38 16,30 12.7,20
-               C 11,14.5 8,9 3.9,4.8
-               Z"
-          />
-
-          <ellipse
-            cx="90.7"
-            cy="81.8"
-            rx="2.6"
-            ry="2.2"
-            fill="url(#landGrad)"
-            stroke="#A9C29C"
-            strokeWidth="0.4"
-            filter="url(#landShadow)"
-          />
-          <ellipse
-            cx="95.6"
-            cy="86.2"
-            rx="1.2"
-            ry="1"
-            fill="url(#landGrad)"
-            stroke="#A9C29C"
-            strokeWidth="0.3"
-            filter="url(#landShadow)"
-          />
-        </svg>
-
-        <p className="absolute top-2 left-2.5 text-[9px] uppercase tracking-wide text-[#12233D]/25 font-bold">
-          Sumbagut
+      {available ? (
+        <div
+          ref={containerRef}
+          className="w-full h-56 sm:h-64 rounded-xl overflow-hidden"
+        />
+      ) : (
+        <p className="text-xs text-[#12233D]/50 py-8 text-center">
+          Peta butuh koneksi internet untuk memuat.
         </p>
-
-        {placed.map((c) => {
-          const { x, y } = projectToPercent(c.coords);
-          const size = Math.round(14 + (c.value / maxVal) * 20);
-          const isActive = activePin?.label === c.label;
-          return (
-            <button
-              key={c.label}
-              onClick={() => setActivePin(isActive ? null : c)}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${x}%`, top: `${y}%` }}
-            >
-              <span className="relative flex items-center justify-center">
-                <span
-                  className="absolute animate-ping rounded-full"
-                  style={{
-                    width: size,
-                    height: size,
-                    backgroundColor: "#C98A2C",
-                    opacity: 0.4,
-                  }}
-                />
-                <span
-                  className="relative rounded-full border-2 border-white"
-                  style={{
-                    width: size,
-                    height: size,
-                    backgroundColor: isActive ? "#B23A2E" : "#C98A2C",
-                    boxShadow: "0 2px 6px rgba(18,35,61,0.4)",
-                  }}
-                />
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {activePin && (
-        <div className="mt-2.5 bg-[#12233D]/[0.04] rounded-xl p-3 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-[#12233D] truncate">
-              {activePin.label}
-            </p>
-            <p className="text-xs text-[#12233D]/60 font-mono">
-              {activePin.count.toLocaleString("id-ID")} kontrak ·{" "}
-              {formatRp(activePin.value)}
-            </p>
-          </div>
-          <button
-            onClick={() => onFilter("cabang", activePin.label)}
-            className="text-xs font-semibold bg-[#12233D] text-white px-3 py-1.5 rounded-lg shrink-0"
-          >
-            Lihat Daftar
-          </button>
-        </div>
       )}
-
       <p className="text-[10px] text-[#12233D]/40 mt-2">
         {placed.length} dari {cabangStats.length} cabang berhasil dipetakan ·
-        ukuran titik = besar sisa hutang · tap titik untuk detail
+        tap titik untuk detail
       </p>
     </DashboardCard>
   );
@@ -2165,6 +2069,53 @@ function LoginClock() {
   );
 }
 
+function LockedIndonesiaMap() {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const [available] = useState(typeof window !== "undefined" && !!window.L);
+
+  useEffect(() => {
+    if (!available || !containerRef.current || mapRef.current) return;
+    const L = window.L;
+    const map = L.map(containerRef.current, {
+      center: [-2.5, 118],
+      zoom: 5,
+      zoomControl: false,
+      attributionControl: true,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      tap: false,
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap",
+      maxZoom: 8,
+      minZoom: 5,
+    }).addTo(map);
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [available]);
+
+  if (!available) {
+    return (
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0c1930] via-[#16294a] to-[#0c1930]" />
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 pointer-events-none grayscale-[15%] brightness-[0.55]"
+    />
+  );
+}
+
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2186,10 +2137,9 @@ function LoginScreen() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0c1930] via-[#16294a] to-[#0c1930]">
-      {/* soft decorative glow, no map */}
-      <div className="absolute -top-24 -left-24 w-96 h-96 bg-[#C98A2C]/10 rounded-full blur-3xl" />
-      <div className="absolute -bottom-32 -right-24 w-96 h-96 bg-[#2A6FB0]/10 rounded-full blur-3xl" />
+    <div className="relative min-h-screen overflow-hidden bg-[#0c1930]">
+      <LockedIndonesiaMap />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#0c1930]/60 via-transparent to-[#0c1930]/70 pointer-events-none" />
 
       {/* brand, top-left */}
       <div className="absolute top-4 left-4 z-10">
@@ -2273,7 +2223,7 @@ function LoginScreen() {
       </div>
 
       {/* clock, centered */}
-      <div className="absolute inset-0 flex items-center justify-center z-0 px-4">
+      <div className="absolute inset-0 flex items-center justify-center z-10 px-4">
         <LoginClock />
       </div>
 
