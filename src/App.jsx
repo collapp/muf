@@ -33,7 +33,16 @@ import {
   Download,
   Save,
   Lightbulb,
+  LogOut,
+  Lock,
+  Mail,
 } from "lucide-react";
+import { auth } from "./firebase";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
 
 // ---------- field mapping ----------
 const norm = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -252,7 +261,7 @@ async function saveJSON(key, value) {
 
 const PAGE_SIZE = 25;
 
-export default function CollectionApp() {
+function MainApp({ user, onLogout }) {
   const [records, setRecords] = useState([]);
   const [activity, setActivity] = useState({}); // contractNo -> {status, notes:[{id,ts,text}]}
   const [ready, setReady] = useState(false);
@@ -478,6 +487,11 @@ export default function CollectionApp() {
             <h1 className="text-lg font-bold leading-tight mt-0.5">
               Portofolio Write Off
             </h1>
+            {user?.email && (
+              <p className="text-[10px] text-white/40 mt-0.5 truncate max-w-[160px]">
+                {user.email}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             {records.length > 0 && (
@@ -495,6 +509,13 @@ export default function CollectionApp() {
             >
               <Upload size={16} />
               {records.length ? "Ganti" : "Upload"}
+            </button>
+            <button
+              onClick={onLogout}
+              title="Keluar"
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2.5 py-2 rounded-lg transition-colors"
+            >
+              <LogOut size={16} />
             </button>
           </div>
           <input
@@ -1323,12 +1344,25 @@ function findCoords(cabangName) {
   return null;
 }
 
+// Bounding box used to project lat/long into a flat panel (Sumbagut region)
+const MAP_BOUNDS = { latMin: 0, latMax: 6.2, lngMin: 94.8, lngMax: 105 };
+
+function projectToPercent([lat, lng]) {
+  const x =
+    ((lng - MAP_BOUNDS.lngMin) / (MAP_BOUNDS.lngMax - MAP_BOUNDS.lngMin)) *
+    100;
+  const y =
+    100 -
+    ((lat - MAP_BOUNDS.latMin) / (MAP_BOUNDS.latMax - MAP_BOUNDS.latMin)) *
+      100;
+  return {
+    x: Math.min(96, Math.max(4, x)),
+    y: Math.min(94, Math.max(6, y)),
+  };
+}
+
 function MapCard({ cabangStats, onFilter }) {
-  const containerRef = useRef(null);
-  const mapRef = useRef(null);
-  const [available] = useState(
-    typeof window !== "undefined" && !!window.L
-  );
+  const [activePin, setActivePin] = useState(null);
 
   const placed = useMemo(() => {
     return cabangStats
@@ -1336,80 +1370,87 @@ function MapCard({ cabangStats, onFilter }) {
       .filter((c) => c.coords);
   }, [cabangStats]);
 
-  useEffect(() => {
-    if (!available || !containerRef.current || mapRef.current) return;
-    const L = window.L;
-    const map = L.map(containerRef.current, {
-      zoomControl: true,
-      attributionControl: true,
-    }).setView([2.5, 99.5], 6);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap",
-      maxZoom: 18,
-    }).addTo(map);
-    mapRef.current = map;
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [available]);
-
-  useEffect(() => {
-    if (!mapRef.current || !window.L) return;
-    const L = window.L;
-    const map = mapRef.current;
-    const markers = [];
-    const maxVal = Math.max(1, ...placed.map((c) => c.value));
-
-    placed.forEach((c) => {
-      const size = Math.round(16 + (c.value / maxVal) * 26);
-      const icon = L.divIcon({
-        html: `
-          <div style="position:relative;width:${size}px;height:${size}px;">
-            <span class="animate-ping" style="position:absolute;inset:0;border-radius:9999px;background:#C98A2C;opacity:0.4;"></span>
-            <span style="position:absolute;inset:0;border-radius:9999px;background:#C98A2C;border:2px solid white;box-shadow:0 2px 6px rgba(18,35,61,0.4);"></span>
-          </div>`,
-        className: "",
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-      });
-      const marker = L.marker(c.coords, { icon }).addTo(map);
-      marker.bindPopup(
-        `<div style="font-family:sans-serif;min-width:150px">
-          <b>${c.label}</b><br/>
-          ${c.count.toLocaleString("id-ID")} kontrak<br/>
-          ${formatRp(c.value)}
-        </div>`
-      );
-      marker.on("click", () => onFilter("cabang", c.label));
-      markers.push(marker);
-    });
-
-    return () => {
-      markers.forEach((m) => map.removeLayer(m));
-    };
-  }, [placed]);
-
-  if (!available) {
-    return (
-      <DashboardCard title="Peta Sebaran Cabang" icon={MapPin} accent="#C98A2C">
-        <p className="text-xs text-[#12233D]/50 py-6 text-center">
-          Peta hanya tersedia di versi web yang sudah di-deploy (butuh akses
-          internet untuk memuat peta).
-        </p>
-      </DashboardCard>
-    );
-  }
+  const maxVal = Math.max(1, ...placed.map((c) => c.value));
 
   return (
     <DashboardCard title="Peta Sebaran Cabang" icon={MapPin} accent="#C98A2C">
       <div
-        ref={containerRef}
-        className="w-full h-64 rounded-xl overflow-hidden"
-      />
+        className="relative w-full rounded-xl overflow-hidden"
+        style={{
+          aspectRatio: "4 / 3",
+          background:
+            "linear-gradient(160deg, #E9EEF5 0%, #F4F5F7 55%, #EAF0EC 100%)",
+        }}
+      >
+        {/* decorative grid to suggest a map surface, purely CSS */}
+        <div
+          className="absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              "linear-gradient(#12233D14 1px, transparent 1px), linear-gradient(90deg, #12233D14 1px, transparent 1px)",
+            backgroundSize: "12.5% 12.5%",
+          }}
+        />
+
+        {placed.map((c) => {
+          const { x, y } = projectToPercent(c.coords);
+          const size = Math.round(14 + (c.value / maxVal) * 20);
+          const isActive = activePin?.label === c.label;
+          return (
+            <button
+              key={c.label}
+              onClick={() => setActivePin(isActive ? null : c)}
+              className="absolute -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${x}%`, top: `${y}%` }}
+            >
+              <span className="relative flex items-center justify-center">
+                <span
+                  className="absolute animate-ping rounded-full"
+                  style={{
+                    width: size,
+                    height: size,
+                    backgroundColor: "#C98A2C",
+                    opacity: 0.4,
+                  }}
+                />
+                <span
+                  className="relative rounded-full border-2 border-white"
+                  style={{
+                    width: size,
+                    height: size,
+                    backgroundColor: isActive ? "#B23A2E" : "#C98A2C",
+                    boxShadow: "0 2px 6px rgba(18,35,61,0.4)",
+                  }}
+                />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activePin && (
+        <div className="mt-2.5 bg-[#12233D]/[0.04] rounded-xl p-3 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[#12233D] truncate">
+              {activePin.label}
+            </p>
+            <p className="text-xs text-[#12233D]/60 font-mono">
+              {activePin.count.toLocaleString("id-ID")} kontrak ·{" "}
+              {formatRp(activePin.value)}
+            </p>
+          </div>
+          <button
+            onClick={() => onFilter("cabang", activePin.label)}
+            className="text-xs font-semibold bg-[#12233D] text-white px-3 py-1.5 rounded-lg shrink-0"
+          >
+            Lihat Daftar
+          </button>
+        </div>
+      )}
+
       <p className="text-[10px] text-[#12233D]/40 mt-2">
         {placed.length} dari {cabangStats.length} cabang berhasil dipetakan ·
-        ukuran titik = besar sisa hutang · tap titik untuk lihat detail
+        ukuran titik = besar sisa hutang · tap titik untuk detail
       </p>
     </DashboardCard>
   );
@@ -1729,4 +1770,140 @@ function Dashboard({ records, activity, onFilter }) {
       )}
     </div>
   );
+}
+
+// ---------- login ----------
+function mapAuthError(code) {
+  const map = {
+    "auth/invalid-email": "Format email tidak valid.",
+    "auth/user-not-found": "Akun tidak ditemukan.",
+    "auth/wrong-password": "Email atau password salah.",
+    "auth/invalid-credential": "Email atau password salah.",
+    "auth/too-many-requests": "Terlalu banyak percobaan. Coba lagi nanti.",
+    "auth/network-request-failed": "Gagal terhubung, cek koneksi internet.",
+    "auth/user-disabled": "Akun ini dinonaktifkan.",
+  };
+  return map[code] || "Gagal masuk. Coba lagi.";
+}
+
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    } catch (err) {
+      setError(mapAuthError(err.code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F4F5F7] flex items-center justify-center px-6">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[#C98A2C] font-bold">
+            Collection Tracker
+          </p>
+          <h1 className="text-xl font-bold text-[#12233D] mt-1">
+            Masuk ke Aplikasi
+          </h1>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white rounded-2xl p-5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] space-y-3.5"
+        >
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+              Email
+            </label>
+            <div className="relative mt-1">
+              <Mail
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#12233D]/30"
+              />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nama@perusahaan.com"
+                className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+              Password
+            </label>
+            <div className="relative mt-1">
+              <Lock
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#12233D]/30"
+              />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-xs text-[#B23A2E] bg-[#B23A2E]/10 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[#12233D] text-white font-semibold text-sm py-2.5 rounded-lg disabled:opacity-50"
+          >
+            {loading ? "Memproses…" : "Masuk"}
+          </button>
+        </form>
+
+        <p className="text-[11px] text-center text-[#12233D]/40 mt-4">
+          Akun dibuat oleh admin melalui Firebase Console. Hubungi admin
+          kalau belum punya akun.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function AppRoot() {
+  const [user, setUser] = useState(undefined); // undefined = checking, null = logged out
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return unsub;
+  }, []);
+
+  if (user === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#12233D]">
+        Memuat…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return <MainApp user={user} onLogout={() => signOut(auth)} />;
 }
