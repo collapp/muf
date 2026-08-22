@@ -36,12 +36,21 @@ import {
   Lock,
   Mail,
   Archive,
+  LayoutList,
+  Rows3,
+  Grid2x2,
+  Settings,
+  KeyRound,
+  Clock,
 } from "lucide-react";
 import { auth } from "./firebase";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
 } from "firebase/auth";
 import {
   subscribeContracts,
@@ -256,6 +265,8 @@ function MainApp({ user, onLogout }) {
   const [uploadProgress, setUploadProgress] = useState(null); // {done,total}
   const [uploadMsg, setUploadMsg] = useState(null);
   const [dbError, setDbError] = useState(null);
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [search, setSearch] = useState("");
   const [cabangFilter, setCabangFilter] = useState("");
   const [recoFilter, setRecoFilter] = useState("");
@@ -263,6 +274,7 @@ function MainApp({ user, onLogout }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [view, setView] = useState("list"); // 'list' | 'dashboard' | 'archive'
+  const [displayMode, setDisplayMode] = useState("card"); // 'card' | 'compact' | 'grid'
   const [selectedId, setSelectedId] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [warnaDraft, setWarnaDraft] = useState("");
@@ -368,6 +380,7 @@ function MainApp({ user, onLogout }) {
         ok: true,
         text: `${result.total} kontrak dari sheet "${sheetName}" — ${result.newCount} baru, ${result.archivedCount} diarsipkan (tidak ada di data terbaru).`,
       });
+      setLastSavedAt(new Date());
     } catch (err) {
       setUploadMsg({ ok: false, text: err.message || "Gagal membaca file." });
     } finally {
@@ -380,6 +393,7 @@ function MainApp({ user, onLogout }) {
   async function setContractStatus(id, statusKey) {
     try {
       await setContractStatusFS(id, statusKey);
+      setLastSavedAt(new Date());
     } catch (err) {
       setDbError(err.message);
     }
@@ -388,6 +402,7 @@ function MainApp({ user, onLogout }) {
   async function saveWarna(id) {
     try {
       await saveWarnaFS(id, warnaDraft.trim());
+      setLastSavedAt(new Date());
     } catch (err) {
       setDbError(err.message);
     }
@@ -399,6 +414,7 @@ function MainApp({ user, onLogout }) {
     try {
       await addNoteFS(id, text);
       setNoteDraft("");
+      setLastSavedAt(new Date());
     } catch (err) {
       setDbError(err.message);
     }
@@ -448,7 +464,8 @@ function MainApp({ user, onLogout }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] text-[#12233D] font-sans pb-10">
+    <div className="min-h-screen bg-[#0c1930] sm:py-6">
+      <div className="max-w-[480px] mx-auto bg-[#F4F5F7] text-[#12233D] font-sans pb-10 min-h-screen sm:min-h-0 sm:rounded-2xl sm:shadow-2xl sm:overflow-hidden">
       {/* header */}
       <div className="bg-[#12233D] text-white px-4 pt-6 pb-5 sticky top-0 z-20 shadow-md">
         <div className="flex items-center justify-between">
@@ -481,6 +498,13 @@ function MainApp({ user, onLogout }) {
             >
               <Upload size={16} />
               {records.length ? "Ganti" : "Upload"}
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Pengaturan Akun"
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm px-2.5 py-2 rounded-lg transition-colors"
+            >
+              <Settings size={16} />
             </button>
             <button
               onClick={onLogout}
@@ -524,6 +548,20 @@ function MainApp({ user, onLogout }) {
           <p className="flex items-center gap-1 text-[10px] text-white/40 mt-2.5">
             <Save size={11} />
             Tersambung ke database tim (real-time)
+            {lastSavedAt && (
+              <span className="text-[#5CC98A]">
+                {" "}
+                · tersimpan {lastSavedAt.toLocaleDateString("id-ID", {
+                  day: "2-digit",
+                  month: "short",
+                })}{" "}
+                {lastSavedAt.toLocaleTimeString("id-ID", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </span>
+            )}
           </p>
         )}
         {dbError && (
@@ -760,7 +798,112 @@ function MainApp({ user, onLogout }) {
           </div>
 
           {/* list */}
-          <div className="px-4 mt-3 space-y-2">
+          <div className="px-4 mt-3 flex items-center justify-between">
+            <p className="text-[11px] text-[#12233D]/40 font-semibold">
+              Tampilan
+            </p>
+            <div className="flex gap-1 bg-white rounded-lg p-1 border border-[#12233D]/10">
+              {[
+                { key: "card", icon: LayoutList, label: "Card" },
+                { key: "compact", icon: Rows3, label: "List" },
+                { key: "grid", icon: Grid2x2, label: "Grid" },
+              ].map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setDisplayMode(m.key)}
+                  title={m.label}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    displayMode === m.key
+                      ? "bg-[#12233D] text-white"
+                      : "text-[#12233D]/40"
+                  }`}
+                >
+                  <m.icon size={14} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {displayMode === "compact" ? (
+            <div className="px-4 mt-2 bg-white rounded-xl border border-[#12233D]/[0.06] overflow-hidden divide-y divide-[#12233D]/[0.06]">
+              {pageRecords.map((r) => {
+                const st = statusInfo(getStatus(r));
+                return (
+                  <button
+                    key={r._id}
+                    onClick={() => {
+                      setSelectedId(r._id);
+                      setWarnaDraft(r.warnaKendaraan || "");
+                    }}
+                    className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 active:bg-[#12233D]/[0.03]"
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: st.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate">
+                        {r.konsumen || "Tanpa Nama"}
+                      </p>
+                      <p className="text-[10px] font-mono text-[#12233D]/40 truncate">
+                        {r.noKontrak} · {r.cabang}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold shrink-0">
+                      {formatRpCompact(r.balPrin)}
+                    </span>
+                  </button>
+                );
+              })}
+              {pageRecords.length === 0 && (
+                <p className="text-center text-sm text-[#12233D]/50 py-10">
+                  Tidak ada data yang cocok.
+                </p>
+              )}
+            </div>
+          ) : displayMode === "grid" ? (
+            <div className="px-4 mt-2 grid grid-cols-2 gap-2">
+              {pageRecords.map((r) => {
+                const st = statusInfo(getStatus(r));
+                return (
+                  <button
+                    key={r._id}
+                    onClick={() => {
+                      setSelectedId(r._id);
+                      setWarnaDraft(r.warnaKendaraan || "");
+                    }}
+                    className="text-left bg-white rounded-xl p-2.5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] active:scale-[0.98] transition-transform"
+                    style={{ borderTop: `3px solid ${st.color}` }}
+                  >
+                    <p className="text-xs font-semibold truncate">
+                      {r.konsumen || "Tanpa Nama"}
+                    </p>
+                    <p className="text-[10px] font-mono text-[#12233D]/40 truncate mt-0.5">
+                      {r.cabang}
+                    </p>
+                    <p className="text-xs font-mono font-bold mt-1.5">
+                      {formatRpCompact(r.balPrin)}
+                    </p>
+                    <span
+                      className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mt-1.5"
+                      style={{
+                        color: st.color,
+                        backgroundColor: st.color + "1A",
+                      }}
+                    >
+                      {st.label}
+                    </span>
+                  </button>
+                );
+              })}
+              {pageRecords.length === 0 && (
+                <p className="col-span-2 text-center text-sm text-[#12233D]/50 py-10">
+                  Tidak ada data yang cocok.
+                </p>
+              )}
+            </div>
+          ) : (
+          <div className="px-4 mt-2 space-y-2">
             {pageRecords.map((r) => {
               const st = statusInfo(getStatus(r));
               return (
@@ -813,6 +956,7 @@ function MainApp({ user, onLogout }) {
               </p>
             )}
           </div>
+          )}
 
           {/* pagination */}
           {totalPages > 1 && (
@@ -1100,6 +1244,14 @@ function MainApp({ user, onLogout }) {
       <p className="text-center text-[10px] text-[#12233D]/30 py-4">
         © SRISP 2026
       </p>
+
+      {showSettings && (
+        <AccountSettings
+          user={user}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+      </div>
     </div>
   );
 }
@@ -1384,7 +1536,8 @@ function MapCard({ cabangStats, onFilter }) {
         className="relative w-full rounded-xl overflow-hidden"
         style={{
           aspectRatio: "4 / 3",
-          background: "linear-gradient(160deg, #DCEBF7 0%, #EAF3F9 100%)",
+          background:
+            "radial-gradient(120% 100% at 20% 0%, #EAF4FC 0%, #CFE6F5 55%, #B9D9EE 100%)",
         }}
       >
         {/* illustrative landmass (approximate northern Sumatra / Sumbagut),
@@ -1395,14 +1548,71 @@ function MapCard({ cabangStats, onFilter }) {
           preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full"
         >
-          <polygon
-            points="3.9,4.8 22.5,11.3 31.4,27.4 38.2,41.9 60.8,59.7 65.7,72.6 71.6,80.6 69.6,91.9 46.1,95.2 39.2,72.6 12.7,33.9"
-            fill="#D9E4D3"
-            stroke="#B9CDB1"
+          <defs>
+            <linearGradient id="landGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#E7F0DE" />
+              <stop offset="100%" stopColor="#C7DBBC" />
+            </linearGradient>
+            <filter id="landShadow" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow
+                dx="0"
+                dy="0.6"
+                stdDeviation="1"
+                floodColor="#12233D"
+                floodOpacity="0.25"
+              />
+            </filter>
+          </defs>
+
+          {/* faint wave texture on the water */}
+          <g stroke="#FFFFFF" strokeOpacity="0.35" fill="none" strokeWidth="0.5">
+            <path d="M 75,10 Q 82,13 90,10" />
+            <path d="M 5,55 Q 12,58 19,55" />
+            <path d="M 80,45 Q 87,48 94,45" />
+            <path d="M 10,85 Q 17,88 24,85" />
+          </g>
+
+          <path
+            filter="url(#landShadow)"
+            fill="url(#landGrad)"
+            stroke="#A9C29C"
             strokeWidth="0.4"
+            d="M 3.9,4.8
+               C 10,3 18,6 22.5,11.3
+               C 27,15.5 29,21 31.4,27.4
+               C 34.5,34.5 36,39 38.2,41.9
+               C 48,50 56,55 60.8,59.7
+               C 64,64 66,68.5 65.7,72.6
+               C 68,76.5 71.8,78.5 71.6,80.6
+               C 72.5,85 71,89.5 69.6,91.9
+               C 62,95.5 53,96.5 46.1,95.2
+               C 43,88.5 41,81 39.2,72.6
+               C 36,63 30.5,52.5 25,45
+               C 20,38 16,30 12.7,20
+               C 11,14.5 8,9 3.9,4.8
+               Z"
           />
-          <circle cx="90.7" cy="81.8" r="2.4" fill="#D9E4D3" stroke="#B9CDB1" strokeWidth="0.4" />
-          <circle cx="95.5" cy="86" r="1.1" fill="#D9E4D3" stroke="#B9CDB1" strokeWidth="0.3" />
+
+          <ellipse
+            cx="90.7"
+            cy="81.8"
+            rx="2.6"
+            ry="2.2"
+            fill="url(#landGrad)"
+            stroke="#A9C29C"
+            strokeWidth="0.4"
+            filter="url(#landShadow)"
+          />
+          <ellipse
+            cx="95.6"
+            cy="86.2"
+            rx="1.2"
+            ry="1"
+            fill="url(#landGrad)"
+            stroke="#A9C29C"
+            strokeWidth="0.3"
+            filter="url(#landShadow)"
+          />
         </svg>
 
         <p className="absolute top-2 left-2.5 text-[9px] uppercase tracking-wide text-[#12233D]/25 font-bold">
@@ -1794,12 +2004,205 @@ function mapAuthError(code) {
     "auth/invalid-email": "Format email tidak valid.",
     "auth/user-not-found": "Akun tidak ditemukan.",
     "auth/wrong-password": "Email atau password salah.",
-    "auth/invalid-credential": "Email atau password salah.",
+    "auth/invalid-credential": "Email atau password lama salah.",
     "auth/too-many-requests": "Terlalu banyak percobaan. Coba lagi nanti.",
     "auth/network-request-failed": "Gagal terhubung, cek koneksi internet.",
     "auth/user-disabled": "Akun ini dinonaktifkan.",
+    "auth/weak-password": "Password baru minimal 6 karakter.",
   };
   return map[code] || "Gagal masuk. Coba lagi.";
+}
+
+function AccountSettings({ user, onClose }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setError("");
+    setSuccess(false);
+    if (next.length < 6) {
+      setError("Password baru minimal 6 karakter.");
+      return;
+    }
+    if (next !== confirm) {
+      setError("Konfirmasi password baru tidak sama.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, current);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await updatePassword(auth.currentUser, next);
+      setSuccess(true);
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+    } catch (err) {
+      setError(mapAuthError(err.code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center sm:justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl overflow-hidden">
+        <div className="bg-[#12233D] text-white px-4 py-3 flex items-center justify-between">
+          <p className="font-semibold text-sm flex items-center gap-1.5">
+            <KeyRound size={15} /> Pengaturan Akun
+          </p>
+          <button onClick={onClose} className="p-1">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3.5">
+          <p className="text-xs text-[#12233D]/50">
+            Masuk sebagai <b>{user?.email}</b>
+          </p>
+
+          <form onSubmit={handleChangePassword} className="space-y-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+                Password Saat Ini
+              </label>
+              <input
+                type="password"
+                required
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                className="w-full mt-1 bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+                Password Baru
+              </label>
+              <input
+                type="password"
+                required
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
+                className="w-full mt-1 bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
+                Konfirmasi Password Baru
+              </label>
+              <input
+                type="password"
+                required
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className="w-full mt-1 bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
+              />
+            </div>
+
+            {error && (
+              <p className="text-xs text-[#B23A2E] bg-[#B23A2E]/10 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
+            {success && (
+              <p className="text-xs text-[#2F7A4F] bg-[#2F7A4F]/10 rounded-lg px-3 py-2">
+                Password berhasil diubah.
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#12233D] text-white font-semibold text-sm py-2.5 rounded-lg disabled:opacity-50"
+            >
+              {loading ? "Memproses…" : "Ubah Password"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const INDONESIA_REGIONS = [
+  { name: "Sumatera", cx: 13, cy: 34, rx: 8, ry: 21, rotate: -18 },
+  { name: "Jawa", cx: 31, cy: 67, rx: 15, ry: 3.4, rotate: -4 },
+  { name: "Kalimantan", cx: 43, cy: 31, rx: 12.5, ry: 15 },
+  { name: "Sulawesi", cx: 59, cy: 34, rx: 5.5, ry: 12, rotate: 20 },
+  { name: "Bali & Nusa Tenggara", cx: 52, cy: 71, rx: 17, ry: 2.6 },
+  { name: "Maluku", cx: 71, cy: 44, rx: 6, ry: 8.5, rotate: 25 },
+  { name: "Papua", cx: 89, cy: 37, rx: 14.5, ry: 16, rotate: -12 },
+];
+
+function IndonesiaMapBackground({ activeRegion, onPick }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      className="absolute inset-0 w-full h-full"
+    >
+      <defs>
+        <linearGradient id="idLandGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#2A4A6B" />
+          <stop offset="100%" stopColor="#1B324C" />
+        </linearGradient>
+        <filter id="idLandGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow
+            dx="0"
+            dy="0"
+            stdDeviation="0.8"
+            floodColor="#C98A2C"
+            floodOpacity="0.35"
+          />
+        </filter>
+      </defs>
+      {INDONESIA_REGIONS.map((r) => (
+        <ellipse
+          key={r.name}
+          cx={r.cx}
+          cy={r.cy}
+          rx={r.rx}
+          ry={r.ry}
+          transform={r.rotate ? `rotate(${r.rotate} ${r.cx} ${r.cy})` : undefined}
+          fill={activeRegion?.name === r.name ? "#C98A2C" : "url(#idLandGrad)"}
+          stroke={activeRegion?.name === r.name ? "#E3A94A" : "#3A5A7D"}
+          strokeWidth="0.35"
+          filter={activeRegion?.name === r.name ? "url(#idLandGlow)" : undefined}
+          className="cursor-pointer transition-colors duration-300"
+          onClick={() => onPick(r)}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function LoginClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="text-center select-none">
+      <p className="text-4xl sm:text-5xl font-mono font-bold text-white tabular-nums tracking-wide drop-shadow">
+        {now.toLocaleTimeString("id-ID")}
+      </p>
+      <p className="text-xs sm:text-sm text-white/60 mt-1 capitalize">
+        {now.toLocaleDateString("id-ID", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })}
+      </p>
+    </div>
+  );
 }
 
 function LoginScreen() {
@@ -1807,6 +2210,7 @@ function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeRegion, setActiveRegion] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -1822,81 +2226,91 @@ function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] flex items-center justify-center px-6">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-6">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[#C98A2C] font-bold">
-            Collection Tracker
-          </p>
-          <h1 className="text-xl font-bold text-[#12233D] mt-1">
-            Masuk ke Aplikasi
-          </h1>
-        </div>
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#0c1930] to-[#16294a]">
+      <IndonesiaMapBackground
+        activeRegion={activeRegion}
+        onPick={setActiveRegion}
+      />
 
+      {activeRegion && (
+        <div
+          className="absolute z-10 -translate-x-1/2 -translate-y-full pointer-events-none"
+          style={{ left: `${activeRegion.cx}%`, top: `${activeRegion.cy}%` }}
+        >
+          <div className="bg-[#12233D] text-white text-xs font-semibold px-2.5 py-1 rounded-lg shadow-lg mb-1 whitespace-nowrap">
+            {activeRegion.name}
+          </div>
+        </div>
+      )}
+
+      {/* brand, top-left */}
+      <div className="absolute top-4 left-4 z-10">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-[#C98A2C] font-bold">
+          Collection Tracker
+        </p>
+        <p className="text-xs text-white/50 mt-0.5">Portofolio Write Off</p>
+      </div>
+
+      {/* clock, top-center-ish */}
+      <div className="absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-10 px-4">
+        <LoginClock />
+      </div>
+
+      {/* compact login form, top-right */}
+      <div className="absolute top-4 right-4 z-20 w-56 sm:w-64">
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl p-5 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_8px_20px_-6px_rgba(18,35,61,0.10)] space-y-3.5"
+          className="bg-white/95 backdrop-blur rounded-xl p-3.5 shadow-2xl space-y-2.5"
         >
-          <div>
-            <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
-              Email
-            </label>
-            <div className="relative mt-1">
-              <Mail
-                size={15}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#12233D]/30"
-              />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@perusahaan.com"
-                className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
-              />
-            </div>
+          <p className="text-[11px] font-bold text-[#12233D] flex items-center gap-1">
+            <Lock size={12} /> Masuk
+          </p>
+          <div className="relative">
+            <Mail
+              size={13}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#12233D]/30"
+            />
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-md pl-7 pr-2 py-1.5 text-xs outline-none focus:border-[#C98A2C]"
+            />
           </div>
-
-          <div>
-            <label className="text-[11px] uppercase tracking-wide text-[#12233D]/50 font-semibold">
-              Password
-            </label>
-            <div className="relative mt-1">
-              <Lock
-                size={15}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#12233D]/30"
-              />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-[#C98A2C]"
-              />
-            </div>
+          <div className="relative">
+            <Lock
+              size={13}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#12233D]/30"
+            />
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full bg-[#F4F5F7] border border-[#12233D]/10 rounded-md pl-7 pr-2 py-1.5 text-xs outline-none focus:border-[#C98A2C]"
+            />
           </div>
-
           {error && (
-            <p className="text-xs text-[#B23A2E] bg-[#B23A2E]/10 rounded-lg px-3 py-2">
+            <p className="text-[10px] text-[#B23A2E] bg-[#B23A2E]/10 rounded-md px-2 py-1.5 leading-snug">
               {error}
             </p>
           )}
-
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#12233D] text-white font-semibold text-sm py-2.5 rounded-lg disabled:opacity-50"
+            className="w-full bg-[#12233D] text-white font-semibold text-xs py-2 rounded-md disabled:opacity-50"
           >
             {loading ? "Memproses…" : "Masuk"}
           </button>
         </form>
-
-        <p className="text-[11px] text-center text-[#12233D]/40 mt-4">
-          Akun dibuat oleh admin melalui Firebase Console. Hubungi admin
-          kalau belum punya akun.
-        </p>
       </div>
+
+      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 text-[10px] text-white/30">
+        © SRISP 2026
+      </p>
     </div>
   );
 }
