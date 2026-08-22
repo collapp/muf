@@ -6,7 +6,6 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
-  RotateCcw,
   FileSpreadsheet,
   MapPin,
   Hash,
@@ -36,6 +35,7 @@ import {
   LogOut,
   Lock,
   Mail,
+  Archive,
 } from "lucide-react";
 import { auth } from "./firebase";
 import {
@@ -43,6 +43,14 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
+import {
+  subscribeContracts,
+  subscribeArchived,
+  mergeUpload,
+  setContractStatusFS,
+  addNoteFS,
+  saveWarnaFS,
+} from "./firestore";
 
 // ---------- field mapping ----------
 const norm = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -236,70 +244,49 @@ async function parseWorkbook(file) {
   return { records, sheetName: best.name };
 }
 
-// ---------- storage helpers ----------
-// Data is kept in this browser's localStorage only — it stays on this
-// device/browser and is not synced anywhere else.
-async function loadJSON(key, fallback) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    return fallback;
-  }
-}
-async function saveJSON(key, value) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-    window.localStorage.setItem(
-      "wo-last-saved",
-      JSON.stringify(new Date().toISOString())
-    );
-  } catch (e) {
-    console.error("storage error", e);
-  }
-}
+
 
 const PAGE_SIZE = 25;
 
 function MainApp({ user, onLogout }) {
   const [records, setRecords] = useState([]);
-  const [activity, setActivity] = useState({}); // contractNo -> {status, notes:[{id,ts,text}]}
+  const [archivedRecords, setArchivedRecords] = useState([]);
   const [ready, setReady] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null); // {done,total}
   const [uploadMsg, setUploadMsg] = useState(null);
+  const [dbError, setDbError] = useState(null);
   const [search, setSearch] = useState("");
   const [cabangFilter, setCabangFilter] = useState("");
   const [recoFilter, setRecoFilter] = useState("");
   const [matriksFilter, setMatriksFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [view, setView] = useState("list"); // 'list' | 'dashboard'
-  const [selected, setSelected] = useState(null);
+  const [view, setView] = useState("list"); // 'list' | 'dashboard' | 'archive'
+  const [selectedId, setSelectedId] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [warnaDraft, setWarnaDraft] = useState("");
-  const [confirmReset, setConfirmReset] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
   const fileInput = useRef(null);
 
+  // real-time subscriptions — records stay in sync across every device
+  // that's logged in, no manual refresh needed.
   useEffect(() => {
-    (async () => {
-      const r = await loadJSON("wo-records", []);
-      const a = await loadJSON("wo-activity", {});
-      const ls = await loadJSON("wo-last-saved", null);
-      setRecords(r);
-      setActivity(a);
-      if (ls) setLastSaved(new Date(ls));
-      setReady(true);
-    })();
+    const unsubActive = subscribeContracts(
+      (rows) => {
+        setRecords(rows);
+        setReady(true);
+      },
+      (err) => setDbError(err.message)
+    );
+    const unsubArchived = subscribeArchived(
+      (rows) => setArchivedRecords(rows),
+      (err) => setDbError(err.message)
+    );
+    return () => {
+      unsubActive();
+      unsubArchived();
+    };
   }, []);
-
-  // keep the "tersimpan otomatis" indicator in sync after every save
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("wo-last-saved");
-      if (raw) setLastSaved(new Date(JSON.parse(raw)));
-    } catch (e) {}
-  }, [records, activity]);
 
   const cabangList = useMemo(() => {
     const set = new Set(records.map((r) => r.cabang).filter(Boolean));
@@ -311,7 +298,18 @@ function MainApp({ user, onLogout }) {
     return Array.from(set).sort();
   }, [records]);
 
-  const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
+  const getStatus = (r) => r?.status || "belum_dihubungi";
+
+  // detail modal always reads live from records/archivedRecords by id,
+  // so it reflects Firestore updates in real time instead of a stale copy
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    return (
+      records.find((r) => r._id === selectedId) ||
+      archivedRecords.find((r) => r._id === selectedId) ||
+      null
+    );
+  }, [selectedId, records, archivedRecords]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -323,7 +321,7 @@ function MainApp({ user, onLogout }) {
         String(r.matriks || "").toUpperCase().trim() !== matriksFilter
       )
         return false;
-      if (statusFilter && getStatus(r._id) !== statusFilter) return false;
+      if (statusFilter && getStatus(r) !== statusFilter) return false;
       if (!q) return true;
       return [
         r.noKontrak,
@@ -337,15 +335,7 @@ function MainApp({ user, onLogout }) {
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [
-    records,
-    search,
-    cabangFilter,
-    recoFilter,
-    matriksFilter,
-    statusFilter,
-    activity,
-  ]);
+  }, [records, search, cabangFilter, recoFilter, matriksFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRecords = filtered.slice(
@@ -368,73 +358,55 @@ function MainApp({ user, onLogout }) {
     if (!file) return;
     setUploading(true);
     setUploadMsg(null);
+    setUploadProgress(null);
     try {
       const { records: parsed, sheetName } = await parseWorkbook(file);
-      setRecords(parsed);
-      await saveJSON("wo-records", parsed);
+      const result = await mergeUpload(parsed, user?.email, (done, total) =>
+        setUploadProgress({ done, total })
+      );
       setUploadMsg({
         ok: true,
-        text: `${parsed.length} kontrak dimuat dari sheet "${sheetName}".`,
+        text: `${result.total} kontrak dari sheet "${sheetName}" — ${result.newCount} baru, ${result.archivedCount} diarsipkan (tidak ada di data terbaru).`,
       });
     } catch (err) {
       setUploadMsg({ ok: false, text: err.message || "Gagal membaca file." });
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInput.current) fileInput.current.value = "";
     }
   }
 
   async function setContractStatus(id, statusKey) {
-    const next = {
-      ...activity,
-      [id]: { ...(activity[id] || { notes: [] }), status: statusKey },
-    };
-    setActivity(next);
-    await saveJSON("wo-activity", next);
+    try {
+      await setContractStatusFS(id, statusKey);
+    } catch (err) {
+      setDbError(err.message);
+    }
   }
 
   async function saveWarna(id) {
-    const next = {
-      ...activity,
-      [id]: {
-        ...(activity[id] || { notes: [] }),
-        warnaKendaraan: warnaDraft.trim(),
-      },
-    };
-    setActivity(next);
-    await saveJSON("wo-activity", next);
+    try {
+      await saveWarnaFS(id, warnaDraft.trim());
+    } catch (err) {
+      setDbError(err.message);
+    }
   }
 
   async function addNote(id) {
     const text = noteDraft.trim();
     if (!text) return;
-    const entry = { id: Date.now(), ts: new Date().toISOString(), text };
-    const prevEntry = activity[id] || {
-      status: "belum_dihubungi",
-      notes: [],
-    };
-    const next = {
-      ...activity,
-      [id]: { ...prevEntry, notes: [entry, ...(prevEntry.notes || [])] },
-    };
-    setActivity(next);
-    setNoteDraft("");
-    await saveJSON("wo-activity", next);
-  }
-
-  async function resetAll() {
-    setRecords([]);
-    setActivity({});
-    await saveJSON("wo-records", []);
-    await saveJSON("wo-activity", {});
-    setConfirmReset(false);
-    setSelected(null);
+    try {
+      await addNoteFS(id, text);
+      setNoteDraft("");
+    } catch (err) {
+      setDbError(err.message);
+    }
   }
 
   function exportBackup() {
     const rows = records.map((r) => {
-      const act = activity[r._id] || {};
-      const notesText = (act.notes || [])
+      const notesText = (r.notes || [])
         .slice()
         .reverse()
         .map(
@@ -455,8 +427,8 @@ function MainApp({ user, onLogout }) {
         "Sisa Hutang": r.balPrin,
         "Matriks Risiko": r.matriks,
         "Recovery Head": r.recoveryHead,
-        "Status Collection": statusInfo(getStatus(r._id)).label,
-        "Warna Kendaraan (manual)": act.warnaKendaraan || "",
+        "Status Collection": statusInfo(getStatus(r)).label,
+        "Warna Kendaraan (manual)": r.warnaKendaraan || "",
         "Catatan Kunjungan": notesText,
       };
     });
@@ -548,23 +520,28 @@ function MainApp({ user, onLogout }) {
           </div>
         )}
 
-        {records.length > 0 && (
+        {records.length > 0 && !dbError && (
           <p className="flex items-center gap-1 text-[10px] text-white/40 mt-2.5">
             <Save size={11} />
-            {lastSaved
-              ? `Tersimpan otomatis di HP ini · ${lastSaved.toLocaleTimeString(
-                  "id-ID",
-                  { hour: "2-digit", minute: "2-digit" }
-                )}`
-              : "Tersimpan otomatis di HP ini"}
+            Tersambung ke database tim (real-time)
+          </p>
+        )}
+        {dbError && (
+          <p className="flex items-center gap-1 text-[10px] text-[#F0932F] mt-2.5">
+            <AlertCircle size={11} />
+            Gagal terhubung ke database: {dbError}
           </p>
         )}
       </div>
 
       {uploading && (
         <div className="px-4 pt-3 text-sm text-[#12233D]/70 flex items-center gap-2">
-          <FileSpreadsheet size={16} className="animate-pulse" /> Membaca
-          file…
+          <FileSpreadsheet size={16} className="animate-pulse" />
+          {uploadProgress
+            ? `Menyimpan ke database… ${uploadProgress.done.toLocaleString(
+                "id-ID"
+              )}/${uploadProgress.total.toLocaleString("id-ID")}`
+            : "Membaca file…"}
         </div>
       )}
       {uploadMsg && !uploading && (
@@ -602,6 +579,19 @@ function MainApp({ user, onLogout }) {
           >
             <LayoutDashboard size={15} /> Dashboard
           </button>
+          <button
+            onClick={() => setView("archive")}
+            className={`flex items-center justify-center gap-1.5 text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+              view === "archive"
+                ? "bg-[#12233D] text-white"
+                : "bg-white text-[#12233D]/60 border border-[#12233D]/10"
+            }`}
+          >
+            <Archive size={15} />
+            {archivedRecords.length > 0 && (
+              <span>{archivedRecords.length}</span>
+            )}
+          </button>
         </div>
       )}
 
@@ -625,7 +615,6 @@ function MainApp({ user, onLogout }) {
       ) : view === "dashboard" ? (
         <Dashboard
           records={records}
-          activity={activity}
           onFilter={(type, value) => {
             if (type === "status") setStatusFilter(value);
             if (type === "cabang") setCabangFilter(value);
@@ -634,6 +623,48 @@ function MainApp({ user, onLogout }) {
             setView("list");
           }}
         />
+      ) : view === "archive" ? (
+        <div className="px-4 mt-4 space-y-2 pb-6">
+          <p className="text-xs text-[#12233D]/50 bg-[#12233D]/[0.04] rounded-lg px-3 py-2.5">
+            Kontrak di sini otomatis pindah kesini karena{" "}
+            <b>tidak ada lagi di file Excel terbaru</b> — kemungkinan besar
+            sudah lunas/selesai di sistem kantor. Data tidak dihapus, dan
+            akan kembali ke Daftar otomatis kalau muncul lagi di upload
+            berikutnya.
+          </p>
+          {archivedRecords.length === 0 && (
+            <p className="text-center text-sm text-[#12233D]/40 py-10">
+              Belum ada kontrak yang diarsipkan.
+            </p>
+          )}
+          {archivedRecords.map((r) => {
+            const st = statusInfo(getStatus(r));
+            return (
+              <button
+                key={r._id}
+                onClick={() => {
+                  setSelectedId(r._id);
+                  setWarnaDraft(r.warnaKendaraan || "");
+                }}
+                className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] opacity-75"
+                style={{ borderLeft: `4px solid ${st.color}` }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">
+                    {r.konsumen || "Tanpa Nama"}
+                  </p>
+                  <p className="text-[11px] font-mono text-[#12233D]/50 mt-0.5">
+                    {r.noKontrak} · {r.cabang}
+                  </p>
+                  <p className="text-xs font-mono font-bold tabular-nums mt-1">
+                    {formatRp(r.balPrin)}
+                  </p>
+                </div>
+                <ChevronRight size={16} className="text-[#12233D]/30 shrink-0" />
+              </button>
+            );
+          })}
+        </div>
       ) : (
         <>
           {/* search + filters */}
@@ -731,13 +762,13 @@ function MainApp({ user, onLogout }) {
           {/* list */}
           <div className="px-4 mt-3 space-y-2">
             {pageRecords.map((r) => {
-              const st = statusInfo(getStatus(r._id));
+              const st = statusInfo(getStatus(r));
               return (
                 <button
                   key={r._id}
                   onClick={() => {
-                    setSelected(r);
-                    setWarnaDraft(activity[r._id]?.warnaKendaraan || "");
+                    setSelectedId(r._id);
+                    setWarnaDraft(r.warnaKendaraan || "");
                   }}
                   className="w-full text-left bg-white rounded-xl p-3 flex items-center gap-3 shadow-[0_1px_2px_rgba(18,35,61,0.06),0_4px_12px_-4px_rgba(18,35,61,0.10)] border border-[#12233D]/[0.04] active:scale-[0.99] transition-transform"
                   style={{ borderLeft: `4px solid ${st.color}` }}
@@ -806,34 +837,6 @@ function MainApp({ user, onLogout }) {
             </div>
           )}
 
-          <div className="px-4 mt-8">
-            {!confirmReset ? (
-              <button
-                onClick={() => setConfirmReset(true)}
-                className="text-xs text-[#12233D]/40 flex items-center gap-1 mx-auto"
-              >
-                <RotateCcw size={12} /> Hapus semua data
-              </button>
-            ) : (
-              <div className="text-center text-xs text-[#12233D]/70 space-y-2">
-                <p>Hapus semua data & catatan collection?</p>
-                <div className="flex justify-center gap-2">
-                  <button
-                    onClick={resetAll}
-                    className="px-3 py-1.5 bg-[#B23A2E] text-white rounded-lg font-semibold"
-                  >
-                    Ya, hapus
-                  </button>
-                  <button
-                    onClick={() => setConfirmReset(false)}
-                    className="px-3 py-1.5 bg-[#12233D]/10 rounded-lg font-semibold"
-                  >
-                    Batal
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
         </>
       )}
 
@@ -842,7 +845,7 @@ function MainApp({ user, onLogout }) {
         <div className="fixed inset-0 z-30 flex items-end sm:items-center sm:justify-center">
           <div
             className="absolute inset-0 bg-black/40"
-            onClick={() => setSelected(null)}
+            onClick={() => setSelectedId(null)}
           />
           <div className="relative bg-[#F4F5F7] w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-[#12233D] text-white px-4 py-3 flex items-center justify-between">
@@ -854,7 +857,7 @@ function MainApp({ user, onLogout }) {
                   {selected.noKontrak}
                 </p>
               </div>
-              <button onClick={() => setSelected(null)} className="p-1.5">
+              <button onClick={() => setSelectedId(null)} className="p-1.5">
                 <X size={18} />
               </button>
             </div>
@@ -867,7 +870,7 @@ function MainApp({ user, onLogout }) {
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {STATUS_OPTIONS.map((s) => {
-                    const active = getStatus(selected._id) === s.key;
+                    const active = getStatus(selected) === s.key;
                     return (
                       <button
                         key={s.key}
@@ -1068,12 +1071,15 @@ function MainApp({ user, onLogout }) {
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  {(activity[selected._id]?.notes || []).length === 0 && (
+                  {(selected.notes || []).length === 0 && (
                     <p className="text-xs text-[#12233D]/40">
                       Belum ada catatan.
                     </p>
                   )}
-                  {(activity[selected._id]?.notes || []).map((n) => (
+                  {(selected.notes || [])
+                    .slice()
+                    .sort((a, b) => b.id - a.id)
+                    .map((n) => (
                     <div
                       key={n.id}
                       className="bg-white rounded-lg px-3 py-2 text-sm border border-[#12233D]/5"
@@ -1378,19 +1384,30 @@ function MapCard({ cabangStats, onFilter }) {
         className="relative w-full rounded-xl overflow-hidden"
         style={{
           aspectRatio: "4 / 3",
-          background:
-            "linear-gradient(160deg, #E9EEF5 0%, #F4F5F7 55%, #EAF0EC 100%)",
+          background: "linear-gradient(160deg, #DCEBF7 0%, #EAF3F9 100%)",
         }}
       >
-        {/* decorative grid to suggest a map surface, purely CSS */}
-        <div
-          className="absolute inset-0 opacity-[0.35]"
-          style={{
-            backgroundImage:
-              "linear-gradient(#12233D14 1px, transparent 1px), linear-gradient(90deg, #12233D14 1px, transparent 1px)",
-            backgroundSize: "12.5% 12.5%",
-          }}
-        />
+        {/* illustrative landmass (approximate northern Sumatra / Sumbagut),
+            not a real geographic map — decorative backdrop for the pins,
+            using the same lat/long → % projection as the markers below */}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full"
+        >
+          <polygon
+            points="3.9,4.8 22.5,11.3 31.4,27.4 38.2,41.9 60.8,59.7 65.7,72.6 71.6,80.6 69.6,91.9 46.1,95.2 39.2,72.6 12.7,33.9"
+            fill="#D9E4D3"
+            stroke="#B9CDB1"
+            strokeWidth="0.4"
+          />
+          <circle cx="90.7" cy="81.8" r="2.4" fill="#D9E4D3" stroke="#B9CDB1" strokeWidth="0.4" />
+          <circle cx="95.5" cy="86" r="1.1" fill="#D9E4D3" stroke="#B9CDB1" strokeWidth="0.3" />
+        </svg>
+
+        <p className="absolute top-2 left-2.5 text-[9px] uppercase tracking-wide text-[#12233D]/25 font-bold">
+          Sumbagut
+        </p>
 
         {placed.map((c) => {
           const { x, y } = projectToPercent(c.coords);
@@ -1456,8 +1473,8 @@ function MapCard({ cabangStats, onFilter }) {
   );
 }
 
-function InsightCard({ records, activity, cabangStats, recoCount, highCount }) {
-  const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
+function InsightCard({ records, cabangStats, recoCount, highCount }) {
+  const getStatus = (r) => r?.status || "belum_dihubungi";
   const total = records.length;
   const totalOutstanding = records.reduce(
     (s, r) => s + (Number(r.balPrin) || 0),
@@ -1490,7 +1507,7 @@ function InsightCard({ records, activity, cabangStats, recoCount, highCount }) {
   }
 
   const belum = records.filter(
-    (r) => getStatus(r._id) === "belum_dihubungi"
+    (r) => getStatus(r) === "belum_dihubungi"
   ).length;
   if (belum > 0) {
     const pct = total > 0 ? (belum / total) * 100 : 0;
@@ -1540,14 +1557,14 @@ function InsightCard({ records, activity, cabangStats, recoCount, highCount }) {
   );
 }
 
-function Dashboard({ records, activity, onFilter }) {
-  const getStatus = (id) => activity[id]?.status || "belum_dihubungi";
+function Dashboard({ records, onFilter }) {
+  const getStatus = (r) => r?.status || "belum_dihubungi";
 
   const statusData = useMemo(() => {
     const counts = {};
     STATUS_OPTIONS.forEach((s) => (counts[s.key] = 0));
     records.forEach((r) => {
-      const s = getStatus(r._id);
+      const s = getStatus(r);
       counts[s] = (counts[s] || 0) + 1;
     });
     return STATUS_OPTIONS.map((s) => ({
@@ -1556,7 +1573,7 @@ function Dashboard({ records, activity, onFilter }) {
       value: counts[s.key],
       color: s.color,
     }));
-  }, [records, activity]);
+  }, [records]);
 
   const matriksData = useMemo(() => {
     const counts = {};
@@ -1612,13 +1629,13 @@ function Dashboard({ records, activity, onFilter }) {
     let count = 0;
     let value = 0;
     records.forEach((r) => {
-      if (getStatus(r._id) === "lunas") {
+      if (getStatus(r) === "lunas") {
         count++;
         value += Number(r.balPrin) || 0;
       }
     });
     return { count, value };
-  }, [records, activity]);
+  }, [records]);
 
   const totalOutstanding = useMemo(
     () => records.reduce((sum, r) => sum + (Number(r.balPrin) || 0), 0),
@@ -1685,7 +1702,6 @@ function Dashboard({ records, activity, onFilter }) {
 
       <InsightCard
         records={records}
-        activity={activity}
         cabangStats={cabangStats}
         recoCount={recoCount}
         highCount={highCount}
